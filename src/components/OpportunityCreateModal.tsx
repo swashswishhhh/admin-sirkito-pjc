@@ -21,12 +21,14 @@ export function OpportunityCreateModal({
   open,
   onClose,
   nextFullIdPreview,
+  isSubmitting,
   onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
   nextFullIdPreview: string;
-  onSubmit: (values: CreateValues) => void;
+  isSubmitting: boolean;
+  onSubmit: (values: CreateValues) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [values, setValues] = React.useState<CreateValues>({
     projectName: "",
@@ -72,7 +74,7 @@ export function OpportunityCreateModal({
     setError(null);
   }, [open]);
 
-  function validateAndSubmit() {
+  async function validateAndSubmit() {
     setError(null);
 
     const requiredChecks: Array<{ label: string; value: string }> = [
@@ -109,11 +111,15 @@ export function OpportunityCreateModal({
       return;
     }
 
-    onSubmit({
+    const result = await onSubmit({
       ...values,
       estimatedAmount: est.value,
       submittedAmount: submitted.value,
     });
+
+    if (!result.ok) {
+      setError(result.error ?? "Unable to save opportunity.");
+    }
   }
 
   if (!open) return null;
@@ -152,6 +158,7 @@ export function OpportunityCreateModal({
               onClick={onClose}
               className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sirkito-gold/50"
               aria-label="Close"
+              disabled={isSubmitting}
             >
               ✕
             </button>
@@ -331,15 +338,15 @@ export function OpportunityCreateModal({
 
         <div className="px-7 py-4 border-t border-slate-200 bg-white flex-shrink-0">
           <div className="flex items-center justify-end gap-3">
-            <SirkitoButton variant="secondary" onClick={onClose} type="button">
+            <SirkitoButton variant="secondary" onClick={onClose} type="button" disabled={isSubmitting}>
               Cancel
             </SirkitoButton>
             <SirkitoButton
               onClick={validateAndSubmit}
               type="button"
-              disabled={isSubmitDisabled}
+              disabled={isSubmitDisabled || isSubmitting}
             >
-              Create Opportunity
+              {isSubmitting ? "Saving to Sirkito DB..." : "Create Opportunity"}
             </SirkitoButton>
           </div>
         </div>

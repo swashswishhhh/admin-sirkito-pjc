@@ -6,14 +6,10 @@ import { SirkitoButton } from "./SirkitoButton";
 import { ToastProvider, useToast } from "./ToastProvider";
 import type { Opportunity } from "@/lib/opportunityTypes";
 import {
-  createOpportunityDomain,
   getLatestVersion,
   reviseOpportunityDomain,
 } from "@/lib/opportunityDomain";
-import {
-  createLocalOpportunityRepository,
-  getNextSequenceFromOpportunities,
-} from "@/lib/opportunityRepositoryLocal";
+import { getNextSequenceFromOpportunities } from "@/lib/opportunityRepositoryLocal";
 import {
   opportunityBaseId,
   opportunityFullId,
@@ -42,9 +38,9 @@ const CATEGORY_LETTER = "E";
 
 function OpportunityManagementInner() {
   const { showToast } = useToast();
-  const repo = React.useMemo(() => createLocalOpportunityRepository(), []);
 
   const [opps, setOpps] = React.useState<Opportunity[]>([]);
+  const [isCreating, setIsCreating] = React.useState(false);
 
   const [createOpen, setCreateOpen] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
@@ -54,9 +50,27 @@ function OpportunityManagementInner() {
   const [statusFilter, setStatusFilter] = React.useState<string>("All");
   const [versionFilter, setVersionFilter] = React.useState<string>("All");
 
+  const loadOpportunities = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/opportunities", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data = (await response.json()) as { opportunities?: Opportunity[]; error?: string };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to load opportunities.");
+      }
+
+      setOpps((data.opportunities ?? []).sort((a, b) => b.updatedAt - a.updatedAt));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to load opportunities");
+    }
+  }, [showToast]);
+
   React.useEffect(() => {
-    setOpps(repo.getAll().sort((a, b) => b.updatedAt - a.updatedAt));
-  }, [repo]);
+    void loadOpportunities();
+  }, [loadOpportunities]);
 
   const nextSequence = getNextSequenceFromOpportunities(opps);
   const nextBaseId = opportunityBaseId(nextSequence, {
@@ -109,7 +123,6 @@ function OpportunityManagementInner() {
     if (!opportunityToRevise) return;
     const revised = reviseOpportunityDomain(opportunityToRevise);
     const next = opps.map((o) => (o.baseId === revised.baseId ? revised : o));
-    repo.saveAll(next);
     setOpps(next.sort((a, b) => b.updatedAt - a.updatedAt));
 
     setConfirmOpen(false);
@@ -352,17 +365,54 @@ function OpportunityManagementInner() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         nextFullIdPreview={nextFullIdPreview}
-        onSubmit={(values) => {
-          const created = createOpportunityDomain({
-            ...values,
-            sequence: nextSequence,
-            prefix: PREFIX,
-            categoryLetter: CATEGORY_LETTER,
-          });
-          const next = [created, ...opps].sort((a, b) => b.updatedAt - a.updatedAt);
-          repo.saveAll(next);
-          setOpps(next);
-          setCreateOpen(false);
+        isSubmitting={isCreating}
+        onSubmit={async (values) => {
+          setIsCreating(true);
+          try {
+            const response = await fetch("/api/opportunities", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(values),
+            });
+
+            const result = (await response.json()) as {
+              opportunity?: Opportunity;
+              zohoSynced?: boolean;
+              error?: string;
+            };
+
+            if (!response.ok) {
+              return {
+                ok: false,
+                error: result.error ?? "Unable to save opportunity.",
+              };
+            }
+
+            if (result.opportunity) {
+              setOpps((prev) =>
+                [result.opportunity as Opportunity, ...prev].sort((a, b) => b.updatedAt - a.updatedAt),
+              );
+            }
+            await loadOpportunities();
+
+            setCreateOpen(false);
+            if (result.zohoSynced) {
+              showToast("Project Saved & Synced to Zoho!");
+            } else {
+              showToast("Project saved to Sirkito DB. Zoho sync failed.");
+            }
+
+            return { ok: true };
+          } catch (error) {
+            return {
+              ok: false,
+              error: error instanceof Error ? error.message : "Unable to save opportunity.",
+            };
+          } finally {
+            setIsCreating(false);
+          }
         }}
       />
 

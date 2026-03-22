@@ -26,6 +26,40 @@ Copy `.env.example` to `.env.local` and fill in values.
 
 Zoho sync runs **after** a successful Supabase insert; if Zoho fails, the row still remains in Supabase.
 
+### Zoho CRM (Vercel / server)
+
+The API route reads these **exact** names (all caps, underscores):
+
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `ZOHO_CLIENT_ID` | Yes | From Zoho API Console |
+| `ZOHO_CLIENT_SECRET` | Yes | From Zoho API Console |
+| `ZOHO_REFRESH_TOKEN` | **Yes** | Used to obtain short-lived access tokens (see below) |
+| `ZOHO_ACCOUNTS_URL` | No | Default `https://accounts.zoho.com`. EU: `https://accounts.zoho.eu` |
+| `ZOHO_API_DOMAIN` | No | Default `https://www.zohoapis.com`. EU: `https://www.zohoapis.eu` |
+
+**Why you see “Missing Zoho credentials”:** Client ID and Secret alone are not enough. Zoho’s OAuth flow requires a **refresh token** (`ZOHO_REFRESH_TOKEN`) so the server can call `POST …/oauth/v2/token` with `grant_type=refresh_token`.
+
+**How to get `ZOHO_REFRESH_TOKEN` (high level):**
+
+1. In **[Zoho API Console](https://api-console.zoho.com/)**, create a **Server-based** client (or use **Self Client** if your org allows it).
+2. Note **Client ID** and **Client Secret**.
+3. Set a **redirect URI** (e.g. `https://localhost` or your app URL) as required by Zoho.
+4. Open this URL in a browser (replace placeholders; adjust host for EU: `accounts.zoho.eu`):
+
+   `https://accounts.zoho.com/oauth/v2/auth?scope=ZohoCRM.modules.ALL&client_id=YOUR_CLIENT_ID&response_type=code&access_type=offline&redirect_uri=YOUR_ENCODED_REDIRECT_URI`
+
+5. After you approve, copy the **`code`** from the redirect URL query string.
+6. Exchange the code for tokens with a one-time `curl` or Postman request to  
+   `POST https://accounts.zoho.com/oauth/v2/token`  
+   with `grant_type=authorization_code`, `client_id`, `client_secret`, `redirect_uri`, and `code`. The JSON response includes **`refresh_token`**.
+7. In **Vercel** → your project → **Settings** → **Environment Variables**, add:
+   - `ZOHO_REFRESH_TOKEN` = that refresh token value  
+   - Ensure `ZOHO_CLIENT_ID` and `ZOHO_CLIENT_SECRET` match the same Zoho client.  
+   Scope “All Environments” or at least **Production**, then **Redeploy** so the new variable is available at runtime.
+
+**Production checklist:** Variables must exist for the environment that serves the deployment (e.g. Production). After adding or changing secrets, trigger a new deployment.
+
 ## Run Locally
 
 ```bash

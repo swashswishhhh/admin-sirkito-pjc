@@ -84,14 +84,24 @@ function extractSequenceFromBaseCode(baseCode: string): number {
 }
 
 async function getZohoAccessToken(): Promise<string> {
-  const clientId = process.env.ZOHO_CLIENT_ID;
-  const clientSecret = process.env.ZOHO_CLIENT_SECRET;
-  const refreshToken = process.env.ZOHO_REFRESH_TOKEN;
-  const accountsUrl = process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com";
+  // Exact Vercel names: ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN
+  const clientId = process.env.ZOHO_CLIENT_ID?.trim();
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET?.trim();
+  const refreshToken = process.env.ZOHO_REFRESH_TOKEN?.trim();
+  const accountsUrl = process.env.ZOHO_ACCOUNTS_URL?.trim() ?? "https://accounts.zoho.com";
 
-  if (!clientId || !clientSecret || !refreshToken) {
+  // Temporary debug: presence only, never log secret values (remove after verifying Vercel).
+  console.log("Checking Keys:", !!process.env.ZOHO_CLIENT_ID);
+  console.log("Zoho env flags (id/secret/refresh):", !!clientId, !!clientSecret, !!refreshToken);
+
+  const missing: string[] = [];
+  if (!clientId) missing.push("ZOHO_CLIENT_ID");
+  if (!clientSecret) missing.push("ZOHO_CLIENT_SECRET");
+  if (!refreshToken) missing.push("ZOHO_REFRESH_TOKEN");
+
+  if (missing.length > 0) {
     throw new Error(
-      "Missing Zoho credentials. Ensure ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, and ZOHO_REFRESH_TOKEN are set.",
+      `Missing Zoho credentials in production env: ${missing.join(", ")}. Add them in Vercel → Settings → Environment Variables (Production), then redeploy.`,
     );
   }
 

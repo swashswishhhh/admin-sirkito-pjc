@@ -18,11 +18,31 @@ type OpportunityInsertInput = {
   submittedAmount: number;
 };
 
+/** Form labels → Supabase `vat` boolean: VAT Inc. = true, VAT Ex. = false */
+function vatFormStringToBoolean(vat: string): boolean {
+  const v = vat.trim().toLowerCase();
+  return v.includes("inc");
+}
+
+/**
+ * Coerce money for Postgres numeric: numbers, or strings like "12,500.50".
+ */
+function normalizeMoney(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const n = parseFloat(value.replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
 /**
  * public.opportunities — columns (Supabase):
  * id, project_name, location, client_name, opportunity_id, base_code, version,
  * estimated_amount, status, created_at, contact_person, contact, description,
- * vat, submitted_amount, updated_at
+ * vat (boolean), submitted_amount, updated_at
  */
 type OpportunityRow = {
   id: string;
@@ -32,16 +52,27 @@ type OpportunityRow = {
   opportunity_id: string;
   base_code: string;
   version: number;
-  estimated_amount: number;
+  estimated_amount: number | string;
   status: string;
   created_at: string;
   contact_person: string | null;
   contact: string | null;
   description: string | null;
-  vat: string | null;
-  submitted_amount: number | null;
+  /** DB column is boolean; legacy rows may still be string */
+  vat: boolean | string | null;
+  submitted_amount: number | string | null;
   updated_at: string | null;
 };
+
+function snapshotVatFromRow(v: boolean | string | null | undefined): OpportunitySnapshot["vat"] {
+  if (typeof v === "boolean") {
+    return v ? "VAT Inc." : "VAT Ex.";
+  }
+  if (typeof v === "string" && v.toLowerCase().includes("inc")) {
+    return "VAT Inc.";
+  }
+  return "VAT Ex.";
+}
 
 const OPPORTUNITY_COLUMNS =
   "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
@@ -134,6 +165,9 @@ function rowToOpportunity(row: OpportunityRow): Opportunity {
   const safeCreatedAt = Number.isNaN(createdAtMs) ? Date.now() : createdAtMs;
   const safeUpdatedAt = Number.isNaN(updatedAtMs) ? safeCreatedAt : updatedAtMs;
 
+  const estimated = normalizeMoney(row.estimated_amount);
+  const submitted = normalizeMoney(row.submitted_amount, estimated);
+
   const snapshot: OpportunitySnapshot = {
     version: row.version,
     fullId: row.opportunity_id,
@@ -145,9 +179,9 @@ function rowToOpportunity(row: OpportunityRow): Opportunity {
     contactPerson: row.contact_person ?? "",
     contact: row.contact ?? "",
     description: row.description ?? "",
-    vat: row.vat ?? "VAT Ex.",
-    estimatedAmount: row.estimated_amount,
-    submittedAmount: row.submitted_amount ?? row.estimated_amount,
+    vat: snapshotVatFromRow(row.vat),
+    estimatedAmount: estimated,
+    submittedAmount: submitted,
   };
 
   return {
@@ -186,6 +220,12 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as OpportunityInsertInput;
 
+    const estimatedAmount = normalizeMoney(body.estimatedAmount);
+    const submittedAmount = normalizeMoney(body.submittedAmount);
+    const vatBoolean = vatFormStringToBoolean(
+      typeof body.vat === "string" ? body.vat : "VAT Ex.",
+    );
+
     const supabase = createSupabaseServerClient();
     const { data: latestRows, error: latestError } = await supabase
       .from("opportunities")
@@ -214,15 +254,15 @@ export async function POST(request: Request) {
       opportunity_id: opportunityId,
       version: 1,
       status: "Submitted",
-      project_name: body.projectName.trim(),
-      location: body.location.trim(),
-      client_name: body.client.trim(),
-      contact_person: body.contactPerson.trim(),
-      contact: body.contact.trim(),
-      description: body.description.trim(),
-      vat: body.vat.trim(),
-      estimated_amount: body.estimatedAmount,
-      submitted_amount: body.submittedAmount,
+      project_name: String(body.projectName ?? "").trim(),
+      location: String(body.location ?? "").trim(),
+      client_name: String(body.client ?? "").trim(),
+      contact_person: String(body.contactPerson ?? "").trim(),
+      contact: String(body.contact ?? "").trim(),
+      description: String(body.description ?? "").trim(),
+      vat: vatBoolean,
+      estimated_amount: estimatedAmount,
+      submitted_amount: submittedAmount,
       created_at: nowIso,
       updated_at: nowIso,
     };
@@ -261,7 +301,7 @@ export async function POST(request: Request) {
         client: body.client,
         location: body.location,
         description: body.description,
-        submittedAmount: body.submittedAmount,
+        submittedAmount: submittedAmount,
       });
       zohoSynced = true;
     } catch (error) {

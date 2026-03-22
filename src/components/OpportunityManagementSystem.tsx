@@ -377,26 +377,47 @@ function OpportunityManagementInner() {
               body: JSON.stringify(values),
             });
 
-            const result = (await response.json()) as {
-              opportunity?: Opportunity;
-              zohoSynced?: boolean;
-              error?: string;
-            };
-
-            if (!response.ok) {
+            const rawText = await response.text();
+            let parsed: Record<string, unknown>;
+            try {
+              parsed = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
+            } catch (error) {
+              console.log("Supabase Error:", error);
               return {
                 ok: false,
-                error: result.error ?? "Unable to save opportunity.",
+                error: "Invalid response from server. Check the Network tab for details.",
               };
             }
 
-            if (result.opportunity) {
-              setOpps((prev) =>
-                [result.opportunity as Opportunity, ...prev].sort((a, b) => b.updatedAt - a.updatedAt),
-              );
-            }
-            await loadOpportunities();
+            const result = parsed as {
+              opportunity?: Opportunity;
+              zohoSynced?: boolean;
+              error?: string;
+              code?: string;
+              details?: string;
+              hint?: string;
+            };
 
+            if (!response.ok) {
+              const error = {
+                status: response.status,
+                message: result.error,
+                code: result.code,
+                details: result.details,
+                hint: result.hint,
+                body: parsed,
+              };
+              console.log("Supabase Error:", error);
+              return {
+                ok: false,
+                error:
+                  result.error ??
+                  (typeof result.details === "string" ? result.details : null) ??
+                  "Unable to save opportunity.",
+              };
+            }
+
+            // Close + toast immediately so the UI never depends on list refresh.
             setCreateOpen(false);
             if (result.zohoSynced) {
               showToast("Project Saved & Synced to Zoho!");
@@ -404,8 +425,16 @@ function OpportunityManagementInner() {
               showToast("Project saved to Sirkito DB. Zoho sync failed.");
             }
 
+            if (result.opportunity) {
+              setOpps((prev) =>
+                [result.opportunity as Opportunity, ...prev].sort((a, b) => b.updatedAt - a.updatedAt),
+              );
+            }
+            void loadOpportunities();
+
             return { ok: true };
           } catch (error) {
+            console.log("Supabase Error:", error);
             return {
               ok: false,
               error: error instanceof Error ? error.message : "Unable to save opportunity.",

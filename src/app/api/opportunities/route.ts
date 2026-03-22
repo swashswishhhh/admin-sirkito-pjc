@@ -18,24 +18,33 @@ type OpportunityInsertInput = {
   submittedAmount: number;
 };
 
+/**
+ * public.opportunities — columns (Supabase):
+ * id, project_name, location, client_name, opportunity_id, base_code, version,
+ * estimated_amount, status, created_at, contact_person, contact, description,
+ * vat, submitted_amount, updated_at
+ */
 type OpportunityRow = {
   id: string;
-  base_code: string;
-  opportunity_id: string;
-  version: number;
-  status: string;
   project_name: string;
   location: string;
   client_name: string;
+  opportunity_id: string;
+  base_code: string;
+  version: number;
+  estimated_amount: number;
+  status: string;
+  created_at: string;
   contact_person: string | null;
   contact: string | null;
   description: string | null;
   vat: string | null;
-  estimated_amount: number;
   submitted_amount: number | null;
-  created_at: string;
   updated_at: string | null;
 };
+
+const OPPORTUNITY_COLUMNS =
+  "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
 
 function extractSequenceFromBaseCode(baseCode: string): number {
   const match = baseCode.match(/^[A-Z0-9]+-[A-Z](\d{4})$/i);
@@ -157,10 +166,11 @@ export async function GET() {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
       .from("opportunities")
-      .select("*")
+      .select(OPPORTUNITY_COLUMNS)
       .order("created_at", { ascending: false });
 
     if (error) {
+      console.error("Supabase Error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -182,6 +192,7 @@ export async function POST(request: Request) {
       .select("base_code");
 
     if (latestError) {
+      console.error("Supabase Error:", latestError);
       return NextResponse.json({ error: latestError.message }, { status: 500 });
     }
 
@@ -219,17 +230,26 @@ export async function POST(request: Request) {
     const { data: inserted, error: insertError } = await supabase
       .from("opportunities")
       .insert(insertPayload)
-      .select("*")
+      .select(OPPORTUNITY_COLUMNS)
       .single();
 
     if (insertError) {
+      console.error("Supabase Error:", insertError);
       if (insertError.code === "23505") {
         return NextResponse.json(
           { error: "Duplicate opportunity ID detected. Please try again." },
           { status: 409 },
         );
       }
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: insertError.message,
+          code: insertError.code,
+          details: insertError.details,
+          hint: insertError.hint,
+        },
+        { status: 500 },
+      );
     }
 
     let zohoSynced = false;
@@ -258,6 +278,7 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    console.error("Supabase Error:", error);
     const message = error instanceof Error ? error.message : "Failed to create opportunity.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

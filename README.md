@@ -17,6 +17,15 @@ Internal admin tool to create, revise, and track **version-controlled Opportunit
 
 The UI displays a full table (project name, location, client, contact, VAT, amounts, status) and lets you copy the full ID by clicking it.
 
+## Environment variables
+
+Copy `.env.example` to `.env.local` and fill in values.
+
+- **`NEXT_PUBLIC_SUPABASE_URL`** / **`NEXT_PUBLIC_SUPABASE_ANON`** — used for the Supabase project URL and anon key (the app reads these on the server for API routes and they must match your Supabase dashboard).
+- **`SUPABASE_SERVICE_ROLE`** (recommended for production) — server-only; add in Vercel **without** the `NEXT_PUBLIC_` prefix. The `/api/opportunities` route uses this key when set so **Row Level Security** does not block inserts or the `insert … returning` row. If you omit it, the route falls back to the anon key (then you must allow insert/select via RLS policies). The legacy name `SUPABASE_SERVICE_ROLE_KEY` still works.
+
+Zoho sync runs **after** a successful Supabase insert; if Zoho fails, the row still remains in Supabase.
+
 ## Run Locally
 
 ```bash

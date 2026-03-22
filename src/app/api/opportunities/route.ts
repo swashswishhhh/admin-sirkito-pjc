@@ -83,6 +83,15 @@ function extractSequenceFromBaseCode(baseCode: string): number {
   return Number(match[1]);
 }
 
+const DUPLICATE_INSERT_MAX_ATTEMPTS = 12;
+
+function maxSequenceFromBaseCodeRows(rows: { base_code?: string }[]): number {
+  return rows.reduce((max, row) => {
+    const seq = extractSequenceFromBaseCode(row.base_code ?? "");
+    return Math.max(max, seq);
+  }, 0);
+}
+
 /** Reads Zoho OAuth env vars; throws if any required value is missing (build-safe + runtime). */
 type ZohoOAuthEnv = {
   clientId: string;
@@ -265,31 +274,9 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseServerClient();
-    const { data: latestRows, error: latestError } = await supabase
-      .from("opportunities")
-      .select("base_code");
-
-    if (latestError) {
-      console.error("Supabase Error:", latestError);
-      return NextResponse.json({ error: latestError.message }, { status: 500 });
-    }
-
-    const latestSequence = (latestRows ?? []).reduce((max, row) => {
-      const code = (row as { base_code?: string }).base_code ?? "";
-      const seq = extractSequenceFromBaseCode(code);
-      return Math.max(max, seq);
-    }, 0);
-    const sequence = latestSequence + 1;
-    const baseCode = opportunityBaseId(sequence, {
-      prefix: PREFIX,
-      categoryLetter: CATEGORY_LETTER,
-    });
-    const opportunityId = opportunityFullId(baseCode, 1);
     const nowIso = new Date().toISOString();
 
-    const insertPayload = {
-      base_code: baseCode,
-      opportunity_id: opportunityId,
+    const insertPayloadBase = {
       version: 1,
       status: "Submitted",
       project_name: String(body.projectName ?? "").trim(),
@@ -305,36 +292,91 @@ export async function POST(request: Request) {
       updated_at: nowIso,
     };
 
-    const { data: inserted, error: insertError } = await supabase
-      .from("opportunities")
-      .insert(insertPayload)
-      .select(OPPORTUNITY_COLUMNS)
-      .single();
+    let inserted: OpportunityRow | null = null;
 
-    if (insertError) {
-      console.error("Supabase Error:", insertError);
-      if (insertError.code === "23505") {
+    for (let attempt = 0; attempt < DUPLICATE_INSERT_MAX_ATTEMPTS; attempt++) {
+      const { data: latestRows, error: latestError } = await supabase
+        .from("opportunities")
+        .select("base_code");
+
+      if (latestError) {
+        console.error("Supabase Error:", latestError);
+        return NextResponse.json({ error: latestError.message }, { status: 500 });
+      }
+
+      const latestSequence = maxSequenceFromBaseCodeRows(
+        (latestRows ?? []) as { base_code?: string }[],
+      );
+      const sequence = latestSequence + 1;
+      const baseCode = opportunityBaseId(sequence, {
+        prefix: PREFIX,
+        categoryLetter: CATEGORY_LETTER,
+      });
+      const opportunityId = opportunityFullId(baseCode, 1);
+
+      const insertPayload = {
+        ...insertPayloadBase,
+        base_code: baseCode,
+        opportunity_id: opportunityId,
+      };
+
+      const { data: ins, error: insertError } = await supabase
+        .from("opportunities")
+        .insert(insertPayload)
+        .select(OPPORTUNITY_COLUMNS)
+        .single();
+
+      if (!insertError && ins) {
+        inserted = ins as OpportunityRow;
+        break;
+      }
+
+      if (insertError) {
+        console.error("Supabase Error:", insertError);
+        if (insertError.code === "23505") {
+          continue;
+        }
         return NextResponse.json(
-          { error: "Duplicate opportunity ID detected. Please try again." },
-          { status: 409 },
+          {
+            error: insertError.message,
+            code: insertError.code,
+            details: insertError.details,
+            hint: insertError.hint,
+          },
+          { status: 500 },
         );
       }
+    }
+
+    if (!inserted) {
+      const { data: suggestRows } = await supabase.from("opportunities").select("base_code");
+      const nextSeq =
+        maxSequenceFromBaseCodeRows((suggestRows ?? []) as { base_code?: string }[]) + 1;
+      const suggestedBase = opportunityBaseId(nextSeq, {
+        prefix: PREFIX,
+        categoryLetter: CATEGORY_LETTER,
+      });
+      const suggestedNextFullId = opportunityFullId(suggestedBase, 1);
+
       return NextResponse.json(
         {
-          error: insertError.message,
-          code: insertError.code,
-          details: insertError.details,
-          hint: insertError.hint,
+          error:
+            "This Opportunity ID already exists. Please use a different sequence or increment the version.",
+          conflictCode: "DUPLICATE_OPPORTUNITY_ID",
+          suggestedNextFullId,
         },
-        { status: 500 },
+        { status: 409 },
       );
     }
+
+    // Zoho only after a successful Supabase insert (no ghost deals on failed insert).
+    const savedOpportunityId = inserted.opportunity_id;
 
     let zohoSynced = false;
     let zohoError: string | null = null;
     try {
       await syncZohoDeal({
-        opportunityId,
+        opportunityId: savedOpportunityId,
         projectName: body.projectName,
         client: body.client,
         location: body.location,
@@ -349,7 +391,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        opportunity: rowToOpportunity(inserted as OpportunityRow),
+        opportunity: rowToOpportunity(inserted),
         zohoSynced,
         zohoError,
       },

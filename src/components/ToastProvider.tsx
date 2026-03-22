@@ -3,22 +3,29 @@
 import * as React from "react";
 
 type ToastContextValue = {
-  showToast: (message: string) => void;
+  /** @param durationMs defaults to 1200; use a longer value for important errors (e.g. 409). */
+  showToast: (message: string, durationMs?: number) => void;
 };
 
 const ToastContext = React.createContext<ToastContextValue | null>(null);
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toast, setToast] = React.useState<{ message: string; id: number } | null>(null);
+const DEFAULT_TOAST_MS = 1200;
 
-  const showToast = React.useCallback((message: string) => {
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toast, setToast] = React.useState<{
+    message: string;
+    id: number;
+    durationMs: number;
+  } | null>(null);
+
+  const showToast = React.useCallback((message: string, durationMs = DEFAULT_TOAST_MS) => {
     const id = Date.now();
-    setToast({ message, id });
+    setToast({ message, id, durationMs });
   }, []);
 
   React.useEffect(() => {
     if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), 1200);
+    const t = window.setTimeout(() => setToast(null), toast.durationMs);
     return () => window.clearTimeout(t);
   }, [toast]);
 

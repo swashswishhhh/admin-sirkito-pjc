@@ -72,6 +72,13 @@ function OpportunityManagementInner() {
     void loadOpportunities();
   }, [loadOpportunities]);
 
+  // Refresh from Supabase when opening the modal so "Next ID preview" matches the latest sequence.
+  React.useEffect(() => {
+    if (createOpen) {
+      void loadOpportunities();
+    }
+  }, [createOpen, loadOpportunities]);
+
   const nextSequence = getNextSequenceFromOpportunities(opps);
   const nextBaseId = opportunityBaseId(nextSequence, {
     prefix: PREFIX,
@@ -396,6 +403,8 @@ function OpportunityManagementInner() {
               code?: string;
               details?: string;
               hint?: string;
+              conflictCode?: string;
+              suggestedNextFullId?: string;
             };
 
             if (!response.ok) {
@@ -408,6 +417,20 @@ function OpportunityManagementInner() {
                 body: parsed,
               };
               console.log("Supabase Error:", error);
+
+              if (response.status === 409) {
+                const conflictMsg =
+                  result.error ??
+                  "This Opportunity ID already exists. Please use a different sequence or increment the version.";
+                showToast(conflictMsg, 5000);
+                void loadOpportunities();
+                const hint =
+                  typeof result.suggestedNextFullId === "string"
+                    ? ` Next available ID: ${result.suggestedNextFullId}`
+                    : "";
+                return { ok: false, error: `${conflictMsg}${hint}` };
+              }
+
               return {
                 ok: false,
                 error:

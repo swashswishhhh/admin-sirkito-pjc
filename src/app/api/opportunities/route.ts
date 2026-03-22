@@ -83,27 +83,43 @@ function extractSequenceFromBaseCode(baseCode: string): number {
   return Number(match[1]);
 }
 
-async function getZohoAccessToken(): Promise<string> {
-  // Exact Vercel names: ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN
+/** Reads Zoho OAuth env vars; throws if any required value is missing (build-safe + runtime). */
+type ZohoOAuthEnv = {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  accountsUrl: string;
+};
+
+function readZohoOAuthEnvOrThrow(): ZohoOAuthEnv {
   const clientId = process.env.ZOHO_CLIENT_ID?.trim();
   const clientSecret = process.env.ZOHO_CLIENT_SECRET?.trim();
   const refreshToken = process.env.ZOHO_REFRESH_TOKEN?.trim();
-  const accountsUrl = process.env.ZOHO_ACCOUNTS_URL?.trim() ?? "https://accounts.zoho.com";
+  const accountsUrl =
+    process.env.ZOHO_ACCOUNTS_URL?.trim() || "https://accounts.zoho.com";
 
-  // Temporary debug: presence only, never log secret values (remove after verifying Vercel).
-  console.log("Checking Keys:", !!process.env.ZOHO_CLIENT_ID);
-  console.log("Zoho env flags (id/secret/refresh):", !!clientId, !!clientSecret, !!refreshToken);
-
-  const missing: string[] = [];
-  if (!clientId) missing.push("ZOHO_CLIENT_ID");
-  if (!clientSecret) missing.push("ZOHO_CLIENT_SECRET");
-  if (!refreshToken) missing.push("ZOHO_REFRESH_TOKEN");
-
-  if (missing.length > 0) {
+  // Single guard so TypeScript narrows to `string` for all three below.
+  if (!clientId || !clientSecret || !refreshToken) {
+    const missing: string[] = [];
+    if (!clientId) missing.push("ZOHO_CLIENT_ID");
+    if (!clientSecret) missing.push("ZOHO_CLIENT_SECRET");
+    if (!refreshToken) missing.push("ZOHO_REFRESH_TOKEN");
     throw new Error(
-      `Missing Zoho credentials in production env: ${missing.join(", ")}. Add them in Vercel → Settings → Environment Variables (Production), then redeploy.`,
+      `Missing Zoho Configuration: ${missing.join(", ")}. Set these in Vercel → Environment Variables (Production) and redeploy.`,
     );
   }
+
+  return {
+    clientId,
+    clientSecret,
+    refreshToken,
+    accountsUrl,
+  };
+}
+
+async function getZohoAccessToken(): Promise<string> {
+  const { clientId, clientSecret, refreshToken, accountsUrl } =
+    readZohoOAuthEnvOrThrow();
 
   const tokenUrl = `${accountsUrl}/oauth/v2/token`;
   const body = new URLSearchParams({
@@ -138,7 +154,10 @@ async function syncZohoDeal(input: {
   submittedAmount: number;
 }) {
   const accessToken = await getZohoAccessToken();
-  const apiDomain = process.env.ZOHO_API_DOMAIN ?? "https://www.zohoapis.com";
+  const apiDomain =
+    process.env.ZOHO_API_DOMAIN?.trim() || "https://www.zohoapis.com";
+  const amount = Number(input.submittedAmount);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
 
   const payload = {
     data: [
@@ -146,7 +165,7 @@ async function syncZohoDeal(input: {
         Deal_Name: input.projectName,
         Account_Name: input.client,
         Description: `${input.description}\nLocation: ${input.location}`,
-        Amount: input.submittedAmount,
+        Amount: safeAmount,
         Custom_Opportunity_ID: input.opportunityId,
       },
     ],
@@ -236,6 +255,15 @@ export async function POST(request: Request) {
       typeof body.vat === "string" ? body.vat : "VAT Ex.",
     );
 
+    const estimatedForDb = Number(estimatedAmount);
+    const submittedForDb = Number(submittedAmount);
+    if (!Number.isFinite(estimatedForDb) || !Number.isFinite(submittedForDb)) {
+      return NextResponse.json(
+        { error: "Invalid estimated or submitted amount (must be numbers)." },
+        { status: 400 },
+      );
+    }
+
     const supabase = createSupabaseServerClient();
     const { data: latestRows, error: latestError } = await supabase
       .from("opportunities")
@@ -271,8 +299,8 @@ export async function POST(request: Request) {
       contact: String(body.contact ?? "").trim(),
       description: String(body.description ?? "").trim(),
       vat: vatBoolean,
-      estimated_amount: estimatedAmount,
-      submitted_amount: submittedAmount,
+      estimated_amount: estimatedForDb,
+      submitted_amount: submittedForDb,
       created_at: nowIso,
       updated_at: nowIso,
     };
@@ -311,7 +339,7 @@ export async function POST(request: Request) {
         client: body.client,
         location: body.location,
         description: body.description,
-        submittedAmount: submittedAmount,
+        submittedAmount: submittedForDb,
       });
       zohoSynced = true;
     } catch (error) {

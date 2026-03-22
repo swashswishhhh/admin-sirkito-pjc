@@ -21,12 +21,15 @@ export function OpportunityCreateModal({
   open,
   onClose,
   nextFullIdPreview,
+  nextPreviewLoading,
   isSubmitting,
   onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
   nextFullIdPreview: string;
+  /** True while fetching the next ID from Supabase (latest row by created_at). */
+  nextPreviewLoading?: boolean;
   isSubmitting: boolean;
   onSubmit: (values: CreateValues) => Promise<{ ok: boolean; error?: string }>;
 }) {
@@ -149,7 +152,13 @@ export function OpportunityCreateModal({
               <div className="mt-2 text-xs text-slate-500">
                 Next ID preview:{" "}
                 <span className="font-mono font-semibold text-slate-900">
-                  {nextFullIdPreview}
+                  {nextPreviewLoading ? (
+                    <span className="text-slate-500 font-normal italic">
+                      Resolving from Supabase…
+                    </span>
+                  ) : (
+                    nextFullIdPreview
+                  )}
                 </span>
               </div>
             </div>

@@ -50,7 +50,47 @@ function OpportunityManagementInner() {
   const [statusFilter, setStatusFilter] = React.useState<string>("All");
   const [versionFilter, setVersionFilter] = React.useState<string>("All");
 
-  const loadOpportunities = React.useCallback(async () => {
+  const [nextPreviewFromApi, setNextPreviewFromApi] = React.useState<{
+    nextFullId: string;
+    nextSequence: number;
+    nextBaseCode: string;
+  } | null>(null);
+  const [nextPreviewLoading, setNextPreviewLoading] = React.useState(false);
+
+  const refreshNextIdPreview = React.useCallback(async () => {
+    setNextPreviewLoading(true);
+    try {
+      const response = await fetch("/api/opportunities/next-preview", {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as {
+        nextFullId?: string;
+        nextSequence?: number;
+        nextBaseCode?: string;
+        error?: string;
+      };
+      if (
+        response.ok &&
+        typeof data.nextFullId === "string" &&
+        typeof data.nextSequence === "number" &&
+        typeof data.nextBaseCode === "string"
+      ) {
+        setNextPreviewFromApi({
+          nextFullId: data.nextFullId,
+          nextSequence: data.nextSequence,
+          nextBaseCode: data.nextBaseCode,
+        });
+      } else {
+        setNextPreviewFromApi(null);
+      }
+    } catch {
+      setNextPreviewFromApi(null);
+    } finally {
+      setNextPreviewLoading(false);
+    }
+  }, []);
+
+  const loadOpportunitiesList = React.useCallback(async () => {
     try {
       const response = await fetch("/api/opportunities", {
         method: "GET",
@@ -68,25 +108,36 @@ function OpportunityManagementInner() {
     }
   }, [showToast]);
 
+  const loadOpportunities = React.useCallback(async () => {
+    await loadOpportunitiesList();
+    await refreshNextIdPreview();
+  }, [loadOpportunitiesList, refreshNextIdPreview]);
+
   React.useEffect(() => {
     void loadOpportunities();
   }, [loadOpportunities]);
 
-  // Refresh from Supabase when opening the modal so "Next ID preview" matches the latest sequence.
+  // When opening the modal: fetch next ID immediately (loading state), then sync list and refresh preview again.
   React.useEffect(() => {
-    if (createOpen) {
-      void loadOpportunities();
-    }
-  }, [createOpen, loadOpportunities]);
+    if (!createOpen) return;
+    void refreshNextIdPreview();
+    void loadOpportunitiesList().then(() => refreshNextIdPreview());
+  }, [createOpen, loadOpportunitiesList, refreshNextIdPreview]);
 
-  const nextSequence = getNextSequenceFromOpportunities(opps);
-  const nextBaseId = opportunityBaseId(nextSequence, {
+  const fallbackNextSequence = getNextSequenceFromOpportunities(opps);
+  const fallbackBaseId = opportunityBaseId(fallbackNextSequence, {
     prefix: PREFIX,
     categoryLetter: CATEGORY_LETTER,
   });
-  const nextFullIdPreview = opportunityFullId(nextBaseId, 1);
-  const nextSequencePadded = nextSequence.toString().padStart(4, "0");
-  const nextSequenceLabel = `${CATEGORY_LETTER}${nextSequencePadded}`;
+  const fallbackFullIdPreview = opportunityFullId(fallbackBaseId, 1);
+  const fallbackSequencePadded = fallbackNextSequence.toString().padStart(4, "0");
+  const fallbackSequenceLabel = `${CATEGORY_LETTER}${fallbackSequencePadded}`;
+
+  const nextFullIdPreview =
+    nextPreviewFromApi?.nextFullId ?? fallbackFullIdPreview;
+  const nextSequenceLabel = nextPreviewFromApi
+    ? `${CATEGORY_LETTER}${nextPreviewFromApi.nextSequence.toString().padStart(4, "0")}`
+    : fallbackSequenceLabel;
 
   const statuses = React.useMemo(() => {
     const set = new Set<string>();
@@ -372,6 +423,7 @@ function OpportunityManagementInner() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         nextFullIdPreview={nextFullIdPreview}
+        nextPreviewLoading={createOpen && nextPreviewLoading}
         isSubmitting={isCreating}
         onSubmit={async (values) => {
           setIsCreating(true);

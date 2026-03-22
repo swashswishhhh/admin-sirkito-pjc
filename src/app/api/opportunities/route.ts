@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabaseClients";
-import { opportunityBaseId, opportunityFullId } from "@/lib/idGenerators";
+import {
+  computeNextOpportunityPreview,
+  parseSequenceFromBaseCode,
+} from "@/lib/opportunityIdSequence";
 import type { Opportunity, OpportunitySnapshot } from "@/lib/opportunityTypes";
 
 const PREFIX = "Q26";
@@ -77,19 +80,23 @@ function snapshotVatFromRow(v: boolean | string | null | undefined): Opportunity
 const OPPORTUNITY_COLUMNS =
   "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
 
-function extractSequenceFromBaseCode(baseCode: string): number {
-  const match = baseCode.match(/^[A-Z0-9]+-[A-Z](\d{4})$/i);
-  if (!match) return 0;
-  return Number(match[1]);
-}
-
 const DUPLICATE_INSERT_MAX_ATTEMPTS = 12;
 
-function maxSequenceFromBaseCodeRows(rows: { base_code?: string }[]): number {
-  return rows.reduce((max, row) => {
-    const seq = extractSequenceFromBaseCode(row.base_code ?? "");
-    return Math.max(max, seq);
-  }, 0);
+async function fetchLatestBaseCodeByCreatedAt(supabase: ReturnType<typeof createSupabaseServerClient>): Promise<{
+  latestBaseCode: string | null;
+  error: { message: string } | null;
+}> {
+  const { data, error } = await supabase
+    .from("opportunities")
+    .select("base_code")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    return { latestBaseCode: null, error: { message: error.message } };
+  }
+  return { latestBaseCode: data?.base_code ?? null, error: null };
 }
 
 /** Reads Zoho OAuth env vars; throws if any required value is missing (build-safe + runtime). */
@@ -199,7 +206,7 @@ async function syncZohoDeal(input: {
 function rowToOpportunity(row: OpportunityRow): Opportunity {
   const createdAtMs = Date.parse(row.created_at);
   const updatedAtMs = row.updated_at ? Date.parse(row.updated_at) : Number.NaN;
-  const sequence = extractSequenceFromBaseCode(row.base_code);
+  const sequence = parseSequenceFromBaseCode(row.base_code);
   const safeCreatedAt = Number.isNaN(createdAtMs) ? Date.now() : createdAtMs;
   const safeUpdatedAt = Number.isNaN(updatedAtMs) ? safeCreatedAt : updatedAtMs;
 
@@ -295,24 +302,18 @@ export async function POST(request: Request) {
     let inserted: OpportunityRow | null = null;
 
     for (let attempt = 0; attempt < DUPLICATE_INSERT_MAX_ATTEMPTS; attempt++) {
-      const { data: latestRows, error: latestError } = await supabase
-        .from("opportunities")
-        .select("base_code");
+      const { latestBaseCode, error: latestError } =
+        await fetchLatestBaseCodeByCreatedAt(supabase);
 
       if (latestError) {
         console.error("Supabase Error:", latestError);
         return NextResponse.json({ error: latestError.message }, { status: 500 });
       }
 
-      const latestSequence = maxSequenceFromBaseCodeRows(
-        (latestRows ?? []) as { base_code?: string }[],
+      const { baseCode, fullId: opportunityId } = computeNextOpportunityPreview(
+        latestBaseCode,
+        { prefix: PREFIX, categoryLetter: CATEGORY_LETTER },
       );
-      const sequence = latestSequence + 1;
-      const baseCode = opportunityBaseId(sequence, {
-        prefix: PREFIX,
-        categoryLetter: CATEGORY_LETTER,
-      });
-      const opportunityId = opportunityFullId(baseCode, 1);
 
       const insertPayload = {
         ...insertPayloadBase,
@@ -349,14 +350,11 @@ export async function POST(request: Request) {
     }
 
     if (!inserted) {
-      const { data: suggestRows } = await supabase.from("opportunities").select("base_code");
-      const nextSeq =
-        maxSequenceFromBaseCodeRows((suggestRows ?? []) as { base_code?: string }[]) + 1;
-      const suggestedBase = opportunityBaseId(nextSeq, {
+      const { latestBaseCode: suggestLatest } = await fetchLatestBaseCodeByCreatedAt(supabase);
+      const { fullId: suggestedNextFullId } = computeNextOpportunityPreview(suggestLatest, {
         prefix: PREFIX,
         categoryLetter: CATEGORY_LETTER,
       });
-      const suggestedNextFullId = opportunityFullId(suggestedBase, 1);
 
       return NextResponse.json(
         {

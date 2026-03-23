@@ -7,7 +7,6 @@ import { ToastProvider, useToast } from "./ToastProvider";
 import type { Opportunity } from "@/lib/opportunityTypes";
 import {
   getLatestVersion,
-  reviseOpportunityDomain,
 } from "@/lib/opportunityDomain";
 import { getNextSequenceFromOpportunities } from "@/lib/opportunityRepositoryLocal";
 import {
@@ -16,6 +15,7 @@ import {
 } from "@/lib/idGenerators";
 import { formatMoney } from "@/lib/opportunityValidation";
 import { OpportunityCreateModal } from "./OpportunityCreateModal";
+import { OpportunityEditModal } from "./OpportunityEditModal";
 
 async function copyTextToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
@@ -34,7 +34,7 @@ async function copyTextToClipboard(text: string): Promise<void> {
 }
 
 const PREFIX = "Q26";
-const CATEGORY_LETTER = "E";
+const CATEGORY_CODE = "E";
 
 function OpportunityManagementInner() {
   const { showToast } = useToast();
@@ -45,6 +45,8 @@ function OpportunityManagementInner() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [opportunityToRevise, setOpportunityToRevise] = React.useState<Opportunity | null>(null);
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editSnapshot, setEditSnapshot] = React.useState<ReturnType<typeof getLatestVersion> | null>(null);
 
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("All");
@@ -127,16 +129,16 @@ function OpportunityManagementInner() {
   const fallbackNextSequence = getNextSequenceFromOpportunities(opps);
   const fallbackBaseId = opportunityBaseId(fallbackNextSequence, {
     prefix: PREFIX,
-    categoryLetter: CATEGORY_LETTER,
+    categoryCode: CATEGORY_CODE,
   });
   const fallbackFullIdPreview = opportunityFullId(fallbackBaseId, 1);
   const fallbackSequencePadded = fallbackNextSequence.toString().padStart(4, "0");
-  const fallbackSequenceLabel = `${CATEGORY_LETTER}${fallbackSequencePadded}`;
+  const fallbackSequenceLabel = `${CATEGORY_CODE}${fallbackSequencePadded}`;
 
   const nextFullIdPreview =
     nextPreviewFromApi?.nextFullId ?? fallbackFullIdPreview;
   const nextSequenceLabel = nextPreviewFromApi
-    ? `${CATEGORY_LETTER}${nextPreviewFromApi.nextSequence.toString().padStart(4, "0")}`
+    ? `${CATEGORY_CODE}${nextPreviewFromApi.nextSequence.toString().padStart(4, "0")}`
     : fallbackSequenceLabel;
 
   const statuses = React.useMemo(() => {
@@ -177,14 +179,32 @@ function OpportunityManagementInner() {
     setConfirmOpen(true);
   }
 
-  function handleConfirmRevise() {
-    if (!opportunityToRevise) return;
-    const revised = reviseOpportunityDomain(opportunityToRevise);
-    const next = opps.map((o) => (o.baseId === revised.baseId ? revised : o));
-    setOpps(next.sort((a, b) => b.updatedAt - a.updatedAt));
+  function openEditModal(snapshot: ReturnType<typeof getLatestVersion>) {
+    setEditSnapshot(snapshot);
+    setEditOpen(true);
+  }
 
-    setConfirmOpen(false);
-    setOpportunityToRevise(null);
+  async function handleConfirmRevise() {
+    if (!opportunityToRevise) return;
+    const latest = getLatestVersion(opportunityToRevise);
+    try {
+      const response = await fetch("/api/opportunities/revise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opportunityId: latest.fullId }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Failed to revise.");
+      }
+
+      setConfirmOpen(false);
+      setOpportunityToRevise(null);
+      await loadOpportunities();
+      showToast("Opportunity revised (new version created).");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to revise opportunity.");
+    }
   }
 
   async function handleCopy(fullId: string) {
@@ -322,6 +342,9 @@ function OpportunityManagementInner() {
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">VAT</th>
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Estimated Amount</th>
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Submitted Amount</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Date Started</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Date Ended</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Final Amount (after discount)</th>
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Version</th>
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Status</th>
                   </tr>
@@ -329,7 +352,7 @@ function OpportunityManagementInner() {
                 <tbody className="divide-y divide-[#E5E7EB]">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-sm text-[#4B5563]">
+                      <td colSpan={15} className="px-4 py-8 text-center text-sm text-[#4B5563]">
                         No results match your filters.
                       </td>
                     </tr>
@@ -382,6 +405,17 @@ function OpportunityManagementInner() {
                           <td className="px-4 py-5 font-mono text-sm font-semibold text-[#1A1A1A]">
                             {formatMoney(current.submittedAmount)}
                           </td>
+                          <td className="px-4 py-5 text-sm text-[#1A1A1A]">
+                            {current.dateStarted ?? "-"}
+                          </td>
+                          <td className="px-4 py-5 text-sm text-[#1A1A1A]">
+                            {current.dateEnded ?? "-"}
+                          </td>
+                          <td className="px-4 py-5 font-mono text-sm font-semibold text-[#1A1A1A]">
+                            {current.finalAmountAfterDiscount === null || current.finalAmountAfterDiscount === undefined
+                              ? "-"
+                              : formatMoney(current.finalAmountAfterDiscount)}
+                          </td>
                           <td className="px-4 py-5 font-mono text-sm font-semibold text-[#1A1A1A]">
                             V{current.version}
                           </td>
@@ -390,9 +424,9 @@ function OpportunityManagementInner() {
                               <div
                                 className={[
                                   "inline-flex items-center rounded-lg px-3 py-1 text-xs font-semibold",
-                                  current.status === "Submitted"
+                                  current.status === "Bidding"
                                     ? "bg-[#F3F4F6] text-[#374151]"
-                                    : current.status === "Revised"
+                                    : current.status === "Awarded"
                                       ? "bg-[#DBEAFE] text-[#1D4ED8]"
                                       : "bg-[#F3F4F6] text-[#374151]",
                                 ].join(" ")}
@@ -405,6 +439,13 @@ function OpportunityManagementInner() {
                                 className="!px-3 hover:bg-sirkito-blue/5 hover:border-sirkito-blue/40 focus:ring-sirkito-blue/30"
                               >
                                 Revise
+                              </SirkitoButton>
+                              <SirkitoButton
+                                variant="secondary"
+                                onClick={() => openEditModal(current)}
+                                className="!px-3 hover:bg-sirkito-blue/5 hover:border-sirkito-blue/40 focus:ring-sirkito-blue/30"
+                              >
+                                Edit
                               </SirkitoButton>
                             </div>
                           </td>
@@ -517,6 +558,36 @@ function OpportunityManagementInner() {
           } finally {
             setIsCreating(false);
           }
+        }}
+      />
+
+      <OpportunityEditModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        opportunity={editSnapshot}
+        onSave={async (values) => {
+          if (!editSnapshot) return { ok: false, error: "No opportunity selected." };
+          const response = await fetch("/api/opportunities/edit", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              opportunityId: editSnapshot.fullId,
+              dateStarted: values.dateStarted,
+              dateEnded: values.dateEnded,
+              status: values.status,
+              finalAmountAfterDiscount: values.finalAmountAfterDiscount,
+            }),
+          });
+
+          const data = (await response.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+          if (!response.ok) {
+            return { ok: false, error: data.error ?? "Unable to save changes." };
+          }
+
+          setEditOpen(false);
+          showToast("Opportunity updated.");
+          void loadOpportunities();
+          return { ok: true };
         }}
       />
 

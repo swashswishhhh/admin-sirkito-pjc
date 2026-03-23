@@ -15,23 +15,30 @@ export type OpportunityCreateInput = {
   vat: string;
   estimatedAmount: number;
   submittedAmount: number;
-  prefix?: string; // defaults to Q26
-  categoryLetter?: string; // defaults to E
+  dateStarted?: string | null;
+  dateEnded?: string | null;
+  status?: OpportunitySnapshot["status"];
+  finalAmountAfterDiscount?: number | null;
+  prefix?: string;
+  categoryCode?: string;
   sequence: number;
   now?: number; // epoch ms (override for tests)
 };
 
 export function createOpportunityDomain(input: OpportunityCreateInput): Opportunity {
   const now = input.now ?? Date.now();
-  const prefix = (input.prefix ?? "Q26").trim();
-  const categoryLetter = (input.categoryLetter ?? "E").trim().slice(0, 1);
+  const prefix = (input.prefix ?? "").trim();
+  const categoryCode = (input.categoryCode ?? "").trim();
 
-  const baseId = opportunityBaseId(input.sequence, { prefix, categoryLetter });
+  const baseId = opportunityBaseId(input.sequence, {
+    prefix: prefix || undefined,
+    categoryCode: categoryCode || undefined,
+  });
 
   const v1: OpportunitySnapshot = {
     version: 1,
     fullId: opportunityFullId(baseId, 1),
-    status: "Submitted",
+    status: input.status ?? "Bidding",
     createdAt: now,
 
     projectName: input.projectName.trim(),
@@ -43,13 +50,17 @@ export function createOpportunityDomain(input: OpportunityCreateInput): Opportun
     vat: input.vat.trim(),
     estimatedAmount: input.estimatedAmount,
     submittedAmount: input.submittedAmount,
+
+    dateStarted: input.dateStarted ?? null,
+    dateEnded: input.dateEnded ?? null,
+    finalAmountAfterDiscount: input.finalAmountAfterDiscount ?? null,
   };
 
   return {
     baseId,
     sequence: input.sequence,
     prefix,
-    categoryLetter,
+    categoryCode,
     createdAt: now,
     updatedAt: now,
     versions: [v1],
@@ -66,7 +77,7 @@ export function reviseOpportunityDomain(opportunity: Opportunity, now?: number):
     ...current,
     version: nextV,
     fullId: opportunityFullId(opportunity.baseId, nextV),
-    status: "Revised",
+    status: current.status, // keep allowed status
     createdAt,
   };
 

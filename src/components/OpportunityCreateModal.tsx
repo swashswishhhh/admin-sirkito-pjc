@@ -15,6 +15,10 @@ type CreateValues = {
   vat: VatType;
   estimatedAmount: number;
   submittedAmount: number;
+  dateStarted: string | null; // YYYY-MM-DD or null
+  dateEnded: string | null; // YYYY-MM-DD or null
+  status: "Bidding" | "Awarded";
+  finalAmountAfterDiscount: number;
 };
 
 export function OpportunityCreateModal({
@@ -43,12 +47,19 @@ export function OpportunityCreateModal({
     vat: "VAT Ex.",
     estimatedAmount: 0,
     submittedAmount: 0,
+    dateStarted: null,
+    dateEnded: null,
+    status: "Bidding",
+    finalAmountAfterDiscount: 0,
   });
 
   const [estimatedAmountInput, setEstimatedAmountInput] = React.useState("0");
   const [submittedAmountInput, setSubmittedAmountInput] = React.useState("0");
+  const [finalAmountAfterDiscountInput, setFinalAmountAfterDiscountInput] = React.useState("0");
 
   const [error, setError] = React.useState<string | null>(null);
+  const [apiNextFullIdPreview, setApiNextFullIdPreview] = React.useState<string | null>(null);
+  const [apiNextLoading, setApiNextLoading] = React.useState(false);
 
   const isSubmitDisabled =
     !values.projectName.trim() ||
@@ -56,7 +67,8 @@ export function OpportunityCreateModal({
     !values.client.trim() ||
     !values.contactPerson.trim() ||
     !values.contact.trim() ||
-    !values.description.trim();
+    !values.description.trim() ||
+    !values.status;
 
   React.useEffect(() => {
     if (!open) return;
@@ -71,11 +83,52 @@ export function OpportunityCreateModal({
       vat: "VAT Ex.",
       estimatedAmount: 0,
       submittedAmount: 0,
+      dateStarted: null,
+      dateEnded: null,
+      status: "Bidding",
+      finalAmountAfterDiscount: 0,
     });
     setEstimatedAmountInput("0");
     setSubmittedAmountInput("0");
+    setFinalAmountAfterDiscountInput("0");
     setError(null);
+    setApiNextFullIdPreview(null);
   }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      try {
+        setApiNextLoading(true);
+        const description = values.description.trim();
+        const qs = new URLSearchParams({ description }).toString();
+        const response = await fetch(`/api/opportunities/next-preview?${qs}`, {
+          cache: "no-store",
+        });
+        const data = (await response.json()) as {
+          nextFullId?: string;
+          error?: string;
+        };
+        if (!cancelled) {
+          if (response.ok && typeof data.nextFullId === "string") {
+            setApiNextFullIdPreview(data.nextFullId);
+          } else {
+            setApiNextFullIdPreview(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setApiNextFullIdPreview(null);
+      } finally {
+        if (!cancelled) setApiNextLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [open, values.description]);
 
   async function validateAndSubmit() {
     setError(null);
@@ -114,10 +167,20 @@ export function OpportunityCreateModal({
       return;
     }
 
+    const finalParsed = parseMoney(
+      finalAmountAfterDiscountInput,
+      "Final Amount (after discount)",
+    );
+    if (finalParsed.error) {
+      setError(finalParsed.error);
+      return;
+    }
+
     const result = await onSubmit({
       ...values,
       estimatedAmount: est.value,
       submittedAmount: submitted.value,
+      finalAmountAfterDiscount: finalParsed.value,
     });
 
     if (!result.ok) {
@@ -152,12 +215,12 @@ export function OpportunityCreateModal({
               <div className="mt-2 text-xs text-slate-500">
                 Next ID preview:{" "}
                 <span className="font-mono font-semibold text-slate-900">
-                  {nextPreviewLoading ? (
+                  {apiNextLoading || nextPreviewLoading ? (
                     <span className="text-slate-500 font-normal italic">
                       Resolving from Supabase…
                     </span>
                   ) : (
-                    nextFullIdPreview
+                    apiNextFullIdPreview ?? nextFullIdPreview
                   )}
                 </span>
               </div>
@@ -339,6 +402,80 @@ export function OpportunityCreateModal({
                       )}
                     </span>
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    Status
+                  </label>
+                  <select
+                    value={values.status}
+                    onChange={(e) =>
+                      setValues((v) => ({
+                        ...v,
+                        status: e.target.value as CreateValues["status"],
+                      }))
+                    }
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
+                  >
+                    <option value="Bidding">Bidding</option>
+                    <option value="Awarded">Awarded</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    Final Amount (after discount)
+                  </label>
+                  <input
+                    value={finalAmountAfterDiscountInput}
+                    onChange={(e) => setFinalAmountAfterDiscountInput(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="e.g. 12500"
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
+                  />
+                  <div className="mt-2 text-xs text-slate-500">
+                    Preview:{" "}
+                    <span className="font-mono">
+                      {formatMoney(
+                        Number(finalAmountAfterDiscountInput.replace(/,/g, "")) || 0,
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    Date Started
+                  </label>
+                  <input
+                    type="date"
+                    value={values.dateStarted ?? ""}
+                    onChange={(e) =>
+                      setValues((v) => ({
+                        ...v,
+                        dateStarted: e.target.value || null,
+                      }))
+                    }
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-slate-700">
+                    Date Ended
+                  </label>
+                  <input
+                    type="date"
+                    value={values.dateEnded ?? ""}
+                    onChange={(e) =>
+                      setValues((v) => ({
+                        ...v,
+                        dateEnded: e.target.value || null,
+                      }))
+                    }
+                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
+                  />
                 </div>
               </div>
             </div>

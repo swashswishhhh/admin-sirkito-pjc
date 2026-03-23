@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabaseClients";
+import { categoryCodeFromDescription, yearPrefix } from "@/lib/idGenerators";
 import {
   computeNextOpportunityPreview,
-  parseSequenceFromBaseCode,
+  parseBaseCode,
 } from "@/lib/opportunityIdSequence";
 import type { Opportunity, OpportunitySnapshot } from "@/lib/opportunityTypes";
 
-const PREFIX = "Q26";
-const CATEGORY_LETTER = "E";
+const PREFIX = "Q26"; // legacy fallback; ideally parse from base_code
+const CATEGORY_CODE = "E"; // legacy fallback; ideally parse from base_code
 
 type OpportunityInsertInput = {
   projectName: string;
@@ -19,6 +20,10 @@ type OpportunityInsertInput = {
   vat: string;
   estimatedAmount: number;
   submittedAmount: number;
+  dateStarted?: string | null;
+  dateEnded?: string | null;
+  status?: OpportunitySnapshot["status"];
+  finalAmountAfterDiscount?: number | null;
 };
 
 /** Form labels → Supabase `vat` boolean: VAT Inc. = true, VAT Ex. = false */
@@ -56,8 +61,11 @@ type OpportunityRow = {
   base_code: string;
   version: number;
   estimated_amount: number | string;
+  final_amount_after_discount: number | string | null;
   status: string;
   created_at: string;
+  date_started: string | null;
+  date_ended: string | null;
   contact_person: string | null;
   contact: string | null;
   description: string | null;
@@ -78,17 +86,21 @@ function snapshotVatFromRow(v: boolean | string | null | undefined): Opportunity
 }
 
 const OPPORTUNITY_COLUMNS =
-  "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
+  "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,date_started,date_ended,final_amount_after_discount,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
 
 const DUPLICATE_INSERT_MAX_ATTEMPTS = 12;
 
-async function fetchLatestBaseCodeByCreatedAt(supabase: ReturnType<typeof createSupabaseServerClient>): Promise<{
+async function fetchLatestBaseCodeByCreatedAt(
+  supabase: ReturnType<typeof createSupabaseServerClient>,
+  opts: { prefix: string; categoryCode: string },
+): Promise<{
   latestBaseCode: string | null;
   error: { message: string } | null;
 }> {
   const { data, error } = await supabase
     .from("opportunities")
     .select("base_code")
+    .ilike("base_code", `${opts.prefix}-${opts.categoryCode}%`)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -206,17 +218,28 @@ async function syncZohoDeal(input: {
 function rowToOpportunity(row: OpportunityRow): Opportunity {
   const createdAtMs = Date.parse(row.created_at);
   const updatedAtMs = row.updated_at ? Date.parse(row.updated_at) : Number.NaN;
-  const sequence = parseSequenceFromBaseCode(row.base_code);
+  const parsed = parseBaseCode(row.base_code);
+  const sequence = parsed?.sequence ?? 0;
   const safeCreatedAt = Number.isNaN(createdAtMs) ? Date.now() : createdAtMs;
   const safeUpdatedAt = Number.isNaN(updatedAtMs) ? safeCreatedAt : updatedAtMs;
 
   const estimated = normalizeMoney(row.estimated_amount);
   const submitted = normalizeMoney(row.submitted_amount, estimated);
+  const finalAfterDiscount = normalizeMoney(
+    row.final_amount_after_discount,
+    NaN,
+  );
+  const finalAfterDiscountOrNull = Number.isFinite(finalAfterDiscount)
+    ? finalAfterDiscount
+    : null;
+
+  const allowedStatus: OpportunitySnapshot["status"] =
+    row.status === "Awarded" ? "Awarded" : "Bidding";
 
   const snapshot: OpportunitySnapshot = {
     version: row.version,
     fullId: row.opportunity_id,
-    status: row.status as OpportunitySnapshot["status"],
+    status: allowedStatus,
     createdAt: safeCreatedAt,
     projectName: row.project_name,
     location: row.location,
@@ -227,13 +250,17 @@ function rowToOpportunity(row: OpportunityRow): Opportunity {
     vat: snapshotVatFromRow(row.vat),
     estimatedAmount: estimated,
     submittedAmount: submitted,
+
+    dateStarted: row.date_started ?? null,
+    dateEnded: row.date_ended ?? null,
+    finalAmountAfterDiscount: finalAfterDiscountOrNull,
   };
 
   return {
     baseId: row.base_code,
     sequence,
-    prefix: PREFIX,
-    categoryLetter: CATEGORY_LETTER,
+    prefix: parsed?.prefix ?? PREFIX,
+    categoryCode: parsed?.categoryCode ?? CATEGORY_CODE,
     createdAt: safeCreatedAt,
     updatedAt: safeUpdatedAt,
     versions: [snapshot],
@@ -253,7 +280,29 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const opportunities = ((data ?? []) as OpportunityRow[]).map(rowToOpportunity);
+    const rows = (data ?? []) as OpportunityRow[];
+    const byBaseId = new Map<string, Opportunity>();
+
+    for (const row of rows) {
+      const partial = rowToOpportunity(row);
+      const existing = byBaseId.get(partial.baseId);
+      if (!existing) {
+        byBaseId.set(partial.baseId, partial);
+        continue;
+      }
+
+      // Merge this snapshot into the versions list.
+      existing.versions.push(partial.versions[0]);
+      existing.updatedAt = Math.max(existing.updatedAt, partial.updatedAt);
+      existing.createdAt = Math.min(existing.createdAt, partial.createdAt);
+    }
+
+    const opportunities = Array.from(byBaseId.values()).map((o) => {
+      const versions = [...o.versions].sort((a, b) => a.version - b.version);
+      return { ...o, versions };
+    });
+
+    opportunities.sort((a, b) => b.updatedAt - a.updatedAt);
     return NextResponse.json({ opportunities }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to fetch opportunities.";
@@ -283,9 +332,19 @@ export async function POST(request: Request) {
     const supabase = createSupabaseServerClient();
     const nowIso = new Date().toISOString();
 
+    const prefix = yearPrefix();
+    const categoryCode = categoryCodeFromDescription(body.description ?? "");
+
+    const status: OpportunitySnapshot["status"] =
+      body.status === "Awarded" ? "Awarded" : "Bidding";
+    const dateStarted = body.dateStarted ?? null;
+    const dateEnded = body.dateEnded ?? null;
+    const finalAmountAfterDiscount =
+      body.finalAmountAfterDiscount ?? null;
+
     const insertPayloadBase = {
       version: 1,
-      status: "Submitted",
+      status,
       project_name: String(body.projectName ?? "").trim(),
       location: String(body.location ?? "").trim(),
       client_name: String(body.client ?? "").trim(),
@@ -295,6 +354,9 @@ export async function POST(request: Request) {
       vat: vatBoolean,
       estimated_amount: estimatedForDb,
       submitted_amount: submittedForDb,
+      date_started: dateStarted,
+      date_ended: dateEnded,
+      final_amount_after_discount: finalAmountAfterDiscount,
       created_at: nowIso,
       updated_at: nowIso,
     };
@@ -303,7 +365,7 @@ export async function POST(request: Request) {
 
     for (let attempt = 0; attempt < DUPLICATE_INSERT_MAX_ATTEMPTS; attempt++) {
       const { latestBaseCode, error: latestError } =
-        await fetchLatestBaseCodeByCreatedAt(supabase);
+        await fetchLatestBaseCodeByCreatedAt(supabase, { prefix, categoryCode });
 
       if (latestError) {
         console.error("Supabase Error:", latestError);
@@ -312,7 +374,7 @@ export async function POST(request: Request) {
 
       const { baseCode, fullId: opportunityId } = computeNextOpportunityPreview(
         latestBaseCode,
-        { prefix: PREFIX, categoryLetter: CATEGORY_LETTER },
+        { prefix, categoryCode },
       );
 
       const insertPayload = {
@@ -350,10 +412,13 @@ export async function POST(request: Request) {
     }
 
     if (!inserted) {
-      const { latestBaseCode: suggestLatest } = await fetchLatestBaseCodeByCreatedAt(supabase);
+      const { latestBaseCode: suggestLatest } = await fetchLatestBaseCodeByCreatedAt(supabase, {
+        prefix,
+        categoryCode,
+      });
       const { fullId: suggestedNextFullId } = computeNextOpportunityPreview(suggestLatest, {
-        prefix: PREFIX,
-        categoryLetter: CATEGORY_LETTER,
+        prefix,
+        categoryCode,
       });
 
       return NextResponse.json(

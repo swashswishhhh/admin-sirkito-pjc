@@ -9,6 +9,7 @@ import {
   getLatestVersion,
 } from "@/lib/opportunityDomain";
 import { getNextSequenceFromOpportunities } from "@/lib/opportunityRepositoryLocal";
+import type { IdConfig } from "@/lib/idConfigStorage";
 import {
   opportunityBaseId,
   opportunityFullId,
@@ -35,7 +36,7 @@ async function copyTextToClipboard(text: string): Promise<void> {
   document.body.removeChild(textarea);
 }
 
-function OpportunityManagementInner() {
+function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
   const { showToast } = useToast();
 
   const [opps, setOpps] = React.useState<Opportunity[]>([]);
@@ -61,7 +62,13 @@ function OpportunityManagementInner() {
   const refreshNextIdPreview = React.useCallback(async () => {
     setNextPreviewLoading(true);
     try {
-      const response = await fetch("/api/opportunities/next-preview", {
+      const qs = new URLSearchParams();
+      if (idConfig.yearPrefixMode !== "AUTO") {
+        qs.set("yearPrefix", idConfig.yearPrefixMode);
+      }
+      qs.set("sequenceStart", String(idConfig.sequenceStart));
+
+      const response = await fetch(`/api/opportunities/next-preview?${qs.toString()}`, {
         cache: "no-store",
       });
       const data = (await response.json()) as {
@@ -89,7 +96,7 @@ function OpportunityManagementInner() {
     } finally {
       setNextPreviewLoading(false);
     }
-  }, []);
+  }, [idConfig.sequenceStart, idConfig.yearPrefixMode]);
 
   const loadOpportunitiesList = React.useCallback(async () => {
     try {
@@ -127,8 +134,12 @@ function OpportunityManagementInner() {
 
   const latestOpportunity = opps[0] ?? null;
 
-  const fallbackNextSequence = getNextSequenceFromOpportunities(opps);
-  const fallbackPrefix = latestOpportunity?.prefix ?? yearPrefix();
+  const fallbackNextSequence =
+    opps.length === 0 ? idConfig.sequenceStart : getNextSequenceFromOpportunities(opps);
+  const fallbackPrefix =
+    idConfig.yearPrefixMode === "AUTO"
+      ? latestOpportunity?.prefix ?? yearPrefix()
+      : idConfig.yearPrefixMode;
   const fallbackCategoryCode = latestOpportunity?.categoryCode ?? "X";
 
   const fallbackBaseId = opportunityBaseId(fallbackNextSequence, {
@@ -491,6 +502,7 @@ function OpportunityManagementInner() {
         nextFullIdPreview={nextFullIdPreview}
         nextPreviewLoading={createOpen && nextPreviewLoading}
         isSubmitting={isCreating}
+        idConfig={idConfig}
         onSubmit={async (values) => {
           setIsCreating(true);
           try {
@@ -499,7 +511,12 @@ function OpportunityManagementInner() {
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify(values),
+              body: JSON.stringify({
+                ...values,
+                yearPrefixOverride:
+                  idConfig.yearPrefixMode === "AUTO" ? null : idConfig.yearPrefixMode,
+                sequenceStart: idConfig.sequenceStart,
+              }),
             });
 
             const rawText = await response.text();
@@ -636,10 +653,10 @@ function OpportunityManagementInner() {
   );
 }
 
-export function OpportunityManagementSystem() {
+export function OpportunityManagementSystem({ idConfig }: { idConfig: IdConfig }) {
   return (
     <ToastProvider>
-      <OpportunityManagementInner />
+      <OpportunityManagementInner idConfig={idConfig} />
     </ToastProvider>
   );
 }

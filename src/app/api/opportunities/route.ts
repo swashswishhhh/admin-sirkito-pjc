@@ -25,6 +25,10 @@ type OpportunityInsertInput = {
   dateEnded?: string | null;
   status?: OpportunitySnapshot["status"];
   finalAmountAfterDiscount?: number | null;
+
+  /** Optional admin overrides (from Settings UI). */
+  yearPrefixOverride?: string | null;
+  sequenceStart?: number | null;
 };
 
 /** Form labels → Supabase `vat` boolean: VAT Inc. = true, VAT Ex. = false */
@@ -370,8 +374,9 @@ export async function POST(request: Request) {
     const nowIso = new Date().toISOString();
 
     // Opportunity IDs: calendar year → Qyy (e.g. 2026 → Q26); description → category (e.g. Mechanical + Plumbing → MP).
-    const prefix = yearPrefix();
+    const prefix = body.yearPrefixOverride?.trim() || yearPrefix();
     const categoryCode = categoryCodeFromDescription(body.description ?? "");
+    const sequenceStart = body.sequenceStart ?? 1;
 
     const status: OpportunitySnapshot["status"] =
       body.status === "Awarded" ? "Awarded" : "Bidding";
@@ -412,7 +417,7 @@ export async function POST(request: Request) {
 
       const { baseCode, fullId: opportunityId } = computeNextOpportunityPreview(
         latestBaseCode,
-        { prefix, categoryCode },
+        { prefix, categoryCode, sequenceStart },
       );
 
       const insertPayload = {
@@ -457,6 +462,7 @@ export async function POST(request: Request) {
       const { fullId: suggestedNextFullId } = computeNextOpportunityPreview(suggestLatest, {
         prefix,
         categoryCode,
+        sequenceStart,
       });
 
       return NextResponse.json(

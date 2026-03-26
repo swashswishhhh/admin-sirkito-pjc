@@ -2,6 +2,9 @@
 
 import * as React from "react";
 import { OpportunityManagementSystem } from "./OpportunityManagementSystem";
+import { DashboardHomeView } from "./DashboardHomeView";
+import { DashboardSettingsView } from "./DashboardSettingsView";
+import { DEFAULT_ID_CONFIG, loadIdConfig, saveIdConfig, type IdConfig } from "@/lib/idConfigStorage";
 
 type NavKey = "dashboard" | "opportunities" | "settings";
 
@@ -99,6 +102,17 @@ function NavButton({
 export function DashboardShell() {
   const [activeNav, setActiveNav] = React.useState<NavKey>("opportunities");
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [idConfig, setIdConfig] = React.useState<IdConfig>(() => DEFAULT_ID_CONFIG);
+
+  React.useEffect(() => {
+    const loaded = loadIdConfig();
+    setIdConfig(loaded);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    saveIdConfig(idConfig);
+  }, [idConfig]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -174,12 +188,24 @@ export function DashboardShell() {
           </div>
         </aside>
 
-        <div className="flex-1">
-          <header className="px-8 py-6 border-b border-[#E5E7EB] bg-white">
+        <div className="flex-1 min-w-0 flex flex-col">
+          <header className="px-8 py-6 border-b border-[#E5E7EB] bg-white flex-shrink-0">
             <div className="flex items-start justify-between gap-6">
               <div>
-                <h1 className="text-2xl font-bold text-[#1A1A1A]">Opportunity ID Management System</h1>
-                <p className="mt-1 text-sm text-[#4B5563]">Generate and maintain versioned IDs.</p>
+                <h1 className="text-2xl font-bold text-[#1A1A1A]">
+                  {activeNav === "dashboard"
+                    ? "Dashboard"
+                    : activeNav === "settings"
+                      ? "Settings"
+                      : "Opportunity ID Management System"}
+                </h1>
+                <p className="mt-1 text-sm text-[#4B5563]">
+                  {activeNav === "dashboard"
+                    ? "Operational overview and trends."
+                    : activeNav === "settings"
+                      ? "Zoho integration and ID generation configuration."
+                      : "Generate and maintain versioned IDs."}
+                </p>
               </div>
               <div className="hidden sm:flex items-center gap-3 text-right">
                 <div className="rounded-2xl border border-sirkito-blue/10 bg-sirkito-blue/5 px-4 py-3">
@@ -190,30 +216,15 @@ export function DashboardShell() {
             </div>
           </header>
 
-          <main className="p-8">
+          <div className="flex-1 min-h-0 overflow-y-auto p-8">
             {activeNav === "opportunities" ? (
-              <OpportunityManagementSystem />
+              <OpportunityManagementSystem idConfig={idConfig} />
             ) : activeNav === "dashboard" ? (
-              <div className="max-w-4xl">
-                <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-6">
-                  <div className="text-sm font-semibold text-[#1A1A1A]">Dashboard</div>
-                  <div className="mt-2 text-sm text-[#4B5563]">
-                    Overview tiles can be added here. Currently, this portal focuses on versioned Opportunity IDs and
-                    Zoho sync.
-                  </div>
-                </div>
-              </div>
+              <DashboardHomeView />
             ) : (
-              <div className="max-w-4xl">
-                <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-6">
-                  <div className="text-sm font-semibold text-[#1A1A1A]">Settings</div>
-                  <div className="mt-2 text-sm text-[#4B5563]">
-                    Admin configuration UI can be added here (env vars, sync behavior, defaults).
-                  </div>
-                </div>
-              </div>
+              <DashboardSettingsView idConfig={idConfig} onIdConfigChange={setIdConfig} />
             )}
-          </main>
+          </div>
         </div>
       </div>
     </div>

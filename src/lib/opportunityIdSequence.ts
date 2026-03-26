@@ -42,14 +42,19 @@ export type NextOpportunityPreview = {
  */
 export function computeNextOpportunityPreview(
   latestBaseCode: string | null | undefined,
-  opts?: { prefix?: string; categoryCode?: string },
+  opts?: { prefix?: string; categoryCode?: string; sequenceStart?: number },
 ): NextOpportunityPreview {
   const parsedLatest = latestBaseCode ? parseBaseCode(latestBaseCode) : null;
   const prefix = opts?.prefix ?? parsedLatest?.prefix ?? yearPrefix();
   const categoryCode = opts?.categoryCode ?? parsedLatest?.categoryCode ?? "X";
 
+  const sequenceStart = opts?.sequenceStart ?? 1;
+
   const lastSeq = parsedLatest?.sequence ?? 0;
-  const sequence = lastSeq < 1 ? 1 : lastSeq + 1; // empty table => ...0001
+  const sanitizedSequenceStart = Number.isFinite(sequenceStart)
+    ? Math.max(1, Math.trunc(sequenceStart))
+    : 1;
+  const sequence = lastSeq < 1 ? sanitizedSequenceStart : lastSeq + 1; // empty table => ... (config start)
 
   const baseCode = opportunityBaseId(sequence, { prefix, categoryCode });
   const fullId = opportunityFullId(baseCode, 1);

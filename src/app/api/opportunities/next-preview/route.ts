@@ -12,7 +12,12 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const description = url.searchParams.get("description") ?? "";
     const categoryCode = description ? categoryCodeFromDescription(description) : null;
-    const prefix = yearPrefix();
+    const prefixOverride = url.searchParams.get("yearPrefix") ?? null;
+    const sequenceStartRaw = url.searchParams.get("sequenceStart") ?? null;
+    const sequenceStart =
+      sequenceStartRaw !== null ? Number(sequenceStartRaw) : 1;
+
+    const prefix = prefixOverride?.trim() || yearPrefix();
 
     const supabase = createSupabaseServerClient();
     const query = supabase
@@ -34,6 +39,7 @@ export async function GET(request: Request) {
     const next = computeNextOpportunityPreview(latestBaseCode, {
       prefix,
       categoryCode: categoryCode ?? undefined,
+      sequenceStart,
     });
 
     return NextResponse.json(

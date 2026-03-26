@@ -4,6 +4,7 @@ import * as React from "react";
 import { SirkitoButton } from "./SirkitoButton";
 import { formatMoney, parseMoney, validateContactNumber, validateRequired } from "@/lib/opportunityValidation";
 import type { VatType } from "@/lib/opportunityTypes";
+import type { IdConfig } from "@/lib/idConfigStorage";
 
 type CreateValues = {
   projectName: string;
@@ -155,6 +156,7 @@ export function OpportunityCreateModal({
   nextFullIdPreview,
   nextPreviewLoading,
   isSubmitting,
+  idConfig,
   onSubmit,
 }: {
   open: boolean;
@@ -163,6 +165,7 @@ export function OpportunityCreateModal({
   /** True while fetching the next ID from Supabase (latest row by created_at). */
   nextPreviewLoading?: boolean;
   isSubmitting: boolean;
+  idConfig: IdConfig;
   onSubmit: (values: CreateValues) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [values, setValues] = React.useState<CreateValues>({
@@ -230,8 +233,11 @@ export function OpportunityCreateModal({
       try {
         setApiNextLoading(true);
         const description = values.description.trim();
-        const qs = new URLSearchParams({ description }).toString();
-        const response = await fetch(`/api/opportunities/next-preview?${qs}`, {
+        const qs = new URLSearchParams();
+        if (idConfig.yearPrefixMode !== "AUTO") qs.set("yearPrefix", idConfig.yearPrefixMode);
+        qs.set("sequenceStart", String(idConfig.sequenceStart));
+        qs.set("description", description);
+        const response = await fetch(`/api/opportunities/next-preview?${qs.toString()}`, {
           cache: "no-store",
         });
         const data = (await response.json()) as {
@@ -256,7 +262,7 @@ export function OpportunityCreateModal({
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [open, values.description]);
+  }, [open, values.description, idConfig.yearPrefixMode, idConfig.sequenceStart]);
 
   async function validateAndSubmit() {
     setError(null);

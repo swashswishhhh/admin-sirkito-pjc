@@ -7,8 +7,9 @@ import {
 } from "@/lib/opportunityIdSequence";
 import type { Opportunity, OpportunitySnapshot } from "@/lib/opportunityTypes";
 
-const PREFIX = "Q26"; // legacy fallback; ideally parse from base_code
-const CATEGORY_CODE = "E"; // legacy fallback; ideally parse from base_code
+/** Fallback when `parseBaseCode` fails on legacy rows; new inserts use `yearPrefix()` (Q26/Q27…) and `categoryCodeFromDescription()` (e.g. MP). */
+const PREFIX = "Q26";
+const CATEGORY_CODE = "E";
 
 type OpportunityInsertInput = {
   projectName: string;
@@ -145,17 +146,31 @@ function readZohoOAuthEnvOrThrow(): ZohoOAuthEnv {
   };
 }
 
-async function getZohoAccessToken(): Promise<string> {
+/** Zoho refresh flow only — never use `grant_type=authorization_code` here (that is one-time code exchange). */
+const ZOHO_REFRESH_GRANT_TYPE = "refresh_token" as const;
+
+type ZohoTokenJson = {
+  access_token?: string;
+  api_domain?: string;
+  error?: string;
+  error_description?: string;
+};
+
+async function getZohoAccessToken(): Promise<{
+  accessToken: string;
+  apiDomain: string;
+}> {
+  console.log("Using Refresh Token:", !!process.env.ZOHO_REFRESH_TOKEN);
+
   const { clientId, clientSecret, refreshToken, accountsUrl } =
     readZohoOAuthEnvOrThrow();
 
   const tokenUrl = `${accountsUrl}/oauth/v2/token`;
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    client_id: clientId,
-    client_secret: clientSecret,
-  });
+  const body = new URLSearchParams();
+  body.set("grant_type", ZOHO_REFRESH_GRANT_TYPE);
+  body.set("refresh_token", refreshToken);
+  body.set("client_id", clientId);
+  body.set("client_secret", clientSecret);
 
   const response = await fetch(tokenUrl, {
     method: "POST",
@@ -166,11 +181,35 @@ async function getZohoAccessToken(): Promise<string> {
     cache: "no-store",
   });
 
-  const json = (await response.json()) as { access_token?: string; error?: string };
-  if (!response.ok || !json.access_token) {
-    throw new Error(json.error ?? "Unable to retrieve Zoho access token.");
+  const raw = await response.text();
+  let json: ZohoTokenJson;
+  try {
+    json = JSON.parse(raw) as ZohoTokenJson;
+  } catch {
+    throw new Error(
+      `Zoho token endpoint returned non-JSON (status ${response.status}).`,
+    );
   }
-  return json.access_token;
+
+  if (response.ok && json.access_token) {
+    const fromToken = json.api_domain?.trim();
+    const apiDomain =
+      fromToken ||
+      process.env.ZOHO_API_DOMAIN?.trim() ||
+      "https://www.zohoapis.com";
+    return { accessToken: json.access_token, apiDomain };
+  }
+
+  const err = json.error ?? "Unable to retrieve Zoho access token.";
+  const detail = json.error_description?.trim();
+  const message = detail ? `${err} — ${detail}` : err;
+  console.error("Zoho token refresh failed:", {
+    status: response.status,
+    error: json.error,
+    error_description: json.error_description,
+    grant_type: ZOHO_REFRESH_GRANT_TYPE,
+  });
+  throw new Error(message);
 }
 
 async function syncZohoDeal(input: {
@@ -181,9 +220,7 @@ async function syncZohoDeal(input: {
   description: string;
   submittedAmount: number;
 }) {
-  const accessToken = await getZohoAccessToken();
-  const apiDomain =
-    process.env.ZOHO_API_DOMAIN?.trim() || "https://www.zohoapis.com";
+  const { accessToken, apiDomain } = await getZohoAccessToken();
   const amount = Number(input.submittedAmount);
   const safeAmount = Number.isFinite(amount) ? amount : 0;
 
@@ -332,6 +369,7 @@ export async function POST(request: Request) {
     const supabase = createSupabaseServerClient();
     const nowIso = new Date().toISOString();
 
+    // Opportunity IDs: calendar year → Qyy (e.g. 2026 → Q26); description → category (e.g. Mechanical + Plumbing → MP).
     const prefix = yearPrefix();
     const categoryCode = categoryCodeFromDescription(body.description ?? "");
 

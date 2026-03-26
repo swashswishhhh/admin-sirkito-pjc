@@ -21,6 +21,134 @@ type CreateValues = {
   finalAmountAfterDiscount: number;
 };
 
+function FloatingTextField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  inputMode,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  placeholder?: string;
+}) {
+  const [focused, setFocused] = React.useState(false);
+  const active = focused || value.trim().length > 0;
+
+  return (
+    <div className="relative">
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        // Keep placeholder as whitespace so the label can float cleanly.
+        placeholder={placeholder ?? " "}
+        inputMode={inputMode}
+        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 pt-4 pb-0 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60"
+      />
+      <label
+        className={[
+          "absolute left-4 transition-all pointer-events-none select-none",
+          active ? "top-1 text-[11px] text-sirkito-blue/80" : "top-3 text-sm text-slate-400",
+        ].join(" ")}
+      >
+        {label}
+      </label>
+    </div>
+  );
+}
+
+function FloatingSelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const [focused, setFocused] = React.useState(false);
+  const active = focused || value.trim().length > 0;
+
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pt-4 pb-0 pr-9 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60"
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </div>
+      <label
+        className={[
+          "absolute left-4 transition-all pointer-events-none select-none",
+          active ? "top-1 text-[11px] text-sirkito-blue/80" : "top-3 text-sm text-slate-400",
+        ].join(" ")}
+      >
+        {label}
+      </label>
+    </div>
+  );
+}
+
+function FloatingTextAreaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 4,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  const [focused, setFocused] = React.useState(false);
+  const active = focused || value.trim().length > 0;
+
+  return (
+    <div className="relative">
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        placeholder={placeholder ?? " "}
+        rows={rows}
+        className="w-full rounded-xl border border-slate-200 bg-white px-4 pt-6 pb-3 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60 resize-y"
+      />
+      <label
+        className={[
+          "absolute left-4 transition-all pointer-events-none select-none",
+          active ? "top-2 text-[11px] text-sirkito-blue/80" : "top-4 text-sm text-slate-400",
+        ].join(" ")}
+      >
+        {label}
+      </label>
+    </div>
+  );
+}
+
 export function OpportunityCreateModal({
   open,
   onClose,
@@ -212,23 +340,22 @@ export function OpportunityCreateModal({
               <div className="mt-1 text-sm text-slate-600">
                 Enter project details to generate an ID.
               </div>
-              <div className="mt-2 text-xs text-slate-500">
-                Next ID preview:{" "}
-                <span className="font-mono font-semibold text-slate-900">
+              <div className="mt-2 text-xs text-slate-500">Auto-generated Next ID preview</div>
+              <div className="mt-1">
+                <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm font-semibold text-slate-900">
                   {apiNextLoading || nextPreviewLoading ? (
-                    <span className="text-slate-500 font-normal italic">
-                      Resolving from Supabase…
-                    </span>
+                    <span className="text-slate-500 font-normal italic">Resolving…</span>
                   ) : (
                     apiNextFullIdPreview ?? nextFullIdPreview
                   )}
-                </span>
+                </div>
+                <div className="mt-1 text-[11px] text-slate-500">Read-only system token</div>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sirkito-gold/50"
+              className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sirkito-blue/30"
               aria-label="Close"
               disabled={isSubmitting}
             >
@@ -244,84 +371,48 @@ export function OpportunityCreateModal({
             </div>
           ) : null}
 
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div>
               <div className="text-xs font-semibold text-slate-500 mb-3">
-                SECTION 1: BASIC INFO
-              </div>
-              <label className="text-xs font-medium text-slate-700">
-                Project Name
-              </label>
-              <input
-                value={values.projectName}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, projectName: e.target.value }))
-                }
-                placeholder="e.g. Main Substation Upgrade - Lot A"
-                className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-              />
-            </div>
-
-            <div>
-              <div className="text-xs font-semibold text-slate-500 mb-3">
-                SECTION 2: DETAILS
+                SECTION 1-2: BASIC DETAILS
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Location
-                  </label>
-                  <input
-                    value={values.location}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, location: e.target.value }))
-                    }
-                    placeholder="e.g. Helsinki"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Client
-                  </label>
-                  <input
-                    value={values.client}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, client: e.target.value }))
-                    }
-                    placeholder="e.g. ABC Oy"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Contact Person
-                  </label>
-                  <input
-                    value={values.contactPerson}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, contactPerson: e.target.value }))
-                    }
-                    placeholder="e.g. Matti Korhonen"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Contact
-                  </label>
-                  <input
-                    value={values.contact}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, contact: e.target.value }))
-                    }
-                    placeholder="e.g. +358 40 123 4567"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  />
-                </div>
+                <FloatingTextField
+                  label="Project Name"
+                  value={values.projectName}
+                  onChange={(next) =>
+                    setValues((v) => ({ ...v, projectName: next }))
+                  }
+                  placeholder="e.g. Main Substation Upgrade - Lot A"
+                />
+                <FloatingTextField
+                  label="Location"
+                  value={values.location}
+                  onChange={(next) =>
+                    setValues((v) => ({ ...v, location: next }))
+                  }
+                  placeholder="e.g. Helsinki"
+                />
+                <FloatingTextField
+                  label="Client"
+                  value={values.client}
+                  onChange={(next) => setValues((v) => ({ ...v, client: next }))}
+                  placeholder="e.g. ABC Oy"
+                />
+                <FloatingTextField
+                  label="Contact Person"
+                  value={values.contactPerson}
+                  onChange={(next) =>
+                    setValues((v) => ({ ...v, contactPerson: next }))
+                  }
+                  placeholder="e.g. Matti Korhonen"
+                />
+                <FloatingTextField
+                  label="Contact"
+                  value={values.contact}
+                  onChange={(next) => setValues((v) => ({ ...v, contact: next }))}
+                  placeholder="e.g. +358 40 123 4567"
+                />
               </div>
             </div>
 
@@ -329,17 +420,14 @@ export function OpportunityCreateModal({
               <div className="text-xs font-semibold text-slate-500 mb-3">
                 SECTION 3: DESCRIPTION
               </div>
-              <label className="text-xs font-medium text-slate-700">
-                Description
-              </label>
-              <textarea
+              <FloatingTextAreaField
+                label="Description"
                 value={values.description}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, description: e.target.value }))
+                onChange={(next) =>
+                  setValues((v) => ({ ...v, description: next }))
                 }
                 placeholder="Short scope, notes, or reference details..."
                 rows={4}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
               />
             </div>
 
@@ -348,30 +436,40 @@ export function OpportunityCreateModal({
                 SECTION 4: FINANCIAL
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-slate-700">VAT</label>
-                  <select
-                    value={values.vat}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, vat: e.target.value as VatType }))
-                    }
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  >
-                    <option value="VAT Ex.">VAT Ex.</option>
-                    <option value="VAT Inc.">VAT Inc.</option>
-                  </select>
-                </div>
+                <FloatingSelectField
+                  label="VAT"
+                  value={values.vat}
+                  onChange={(next) =>
+                    setValues((v) => ({ ...v, vat: next as VatType }))
+                  }
+                  options={[
+                    { value: "VAT Ex.", label: "VAT Ex." },
+                    { value: "VAT Inc.", label: "VAT Inc." },
+                  ]}
+                />
+
+                <FloatingSelectField
+                  label="Status"
+                  value={values.status}
+                  onChange={(next) =>
+                    setValues((v) => ({
+                      ...v,
+                      status: next as CreateValues["status"],
+                    }))
+                  }
+                  options={[
+                    { value: "Bidding", label: "Bidding" },
+                    { value: "Awarded", label: "Awarded" },
+                  ]}
+                />
 
                 <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Estimated Amount
-                  </label>
-                  <input
+                  <FloatingTextField
+                    label="Estimated Amount"
                     value={estimatedAmountInput}
-                    onChange={(e) => setEstimatedAmountInput(e.target.value)}
+                    onChange={setEstimatedAmountInput}
                     inputMode="decimal"
                     placeholder="e.g. 12500"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
                   />
                   <div className="mt-2 text-xs text-slate-500">
                     Preview:{" "}
@@ -383,16 +481,13 @@ export function OpportunityCreateModal({
                   </div>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label className="text-xs font-medium text-slate-700">
-                    Submitted Amount
-                  </label>
-                  <input
+                <div>
+                  <FloatingTextField
+                    label="Submitted Amount"
                     value={submittedAmountInput}
-                    onChange={(e) => setSubmittedAmountInput(e.target.value)}
+                    onChange={setSubmittedAmountInput}
                     inputMode="decimal"
                     placeholder="e.g. 11950"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
                   />
                   <div className="mt-2 text-xs text-slate-500">
                     Preview:{" "}
@@ -404,78 +499,47 @@ export function OpportunityCreateModal({
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Status
-                  </label>
-                  <select
-                    value={values.status}
-                    onChange={(e) =>
-                      setValues((v) => ({
-                        ...v,
-                        status: e.target.value as CreateValues["status"],
-                      }))
-                    }
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  >
-                    <option value="Bidding">Bidding</option>
-                    <option value="Awarded">Awarded</option>
-                  </select>
-                </div>
+                <FloatingTextField
+                  label="Date Started"
+                  type="date"
+                  value={values.dateStarted ?? ""}
+                  onChange={(next) =>
+                    setValues((v) => ({
+                      ...v,
+                      dateStarted: next || null,
+                    }))
+                  }
+                />
 
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Final Amount (after discount)
-                  </label>
-                  <input
+                <FloatingTextField
+                  label="Date Ended"
+                  type="date"
+                  value={values.dateEnded ?? ""}
+                  onChange={(next) =>
+                    setValues((v) => ({
+                      ...v,
+                      dateEnded: next || null,
+                    }))
+                  }
+                />
+
+                <div className="sm:col-span-2">
+                  <FloatingTextField
+                    label="Final Amount (after discount)"
                     value={finalAmountAfterDiscountInput}
-                    onChange={(e) => setFinalAmountAfterDiscountInput(e.target.value)}
+                    onChange={setFinalAmountAfterDiscountInput}
                     inputMode="decimal"
                     placeholder="e.g. 12500"
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
                   />
                   <div className="mt-2 text-xs text-slate-500">
                     Preview:{" "}
                     <span className="font-mono">
                       {formatMoney(
-                        Number(finalAmountAfterDiscountInput.replace(/,/g, "")) || 0,
+                        Number(finalAmountAfterDiscountInput.replace(/,/g, "")) ||
+                          0,
                       )}
                     </span>
                   </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Date Started
-                  </label>
-                  <input
-                    type="date"
-                    value={values.dateStarted ?? ""}
-                    onChange={(e) =>
-                      setValues((v) => ({
-                        ...v,
-                        dateStarted: e.target.value || null,
-                      }))
-                    }
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-700">
-                    Date Ended
-                  </label>
-                  <input
-                    type="date"
-                    value={values.dateEnded ?? ""}
-                    onChange={(e) =>
-                      setValues((v) => ({
-                        ...v,
-                        dateEnded: e.target.value || null,
-                      }))
-                    }
-                    className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                  />
                 </div>
               </div>
             </div>

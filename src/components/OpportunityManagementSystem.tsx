@@ -12,7 +12,9 @@ import { getNextSequenceFromOpportunities } from "@/lib/opportunityRepositoryLoc
 import {
   opportunityBaseId,
   opportunityFullId,
+  yearPrefix,
 } from "@/lib/idGenerators";
+import { parseBaseCode } from "@/lib/opportunityIdSequence";
 import { formatMoney } from "@/lib/opportunityValidation";
 import { OpportunityCreateModal } from "./OpportunityCreateModal";
 import { OpportunityEditModal } from "./OpportunityEditModal";
@@ -32,9 +34,6 @@ async function copyTextToClipboard(text: string): Promise<void> {
   document.execCommand("copy");
   document.body.removeChild(textarea);
 }
-
-const PREFIX = "Q26";
-const CATEGORY_CODE = "E";
 
 function OpportunityManagementInner() {
   const { showToast } = useToast();
@@ -126,19 +125,34 @@ function OpportunityManagementInner() {
     void loadOpportunitiesList().then(() => refreshNextIdPreview());
   }, [createOpen, loadOpportunitiesList, refreshNextIdPreview]);
 
+  const latestOpportunity = opps[0] ?? null;
+
   const fallbackNextSequence = getNextSequenceFromOpportunities(opps);
+  const fallbackPrefix = latestOpportunity?.prefix ?? yearPrefix();
+  const fallbackCategoryCode = latestOpportunity?.categoryCode ?? "X";
+
   const fallbackBaseId = opportunityBaseId(fallbackNextSequence, {
-    prefix: PREFIX,
-    categoryCode: CATEGORY_CODE,
+    prefix: fallbackPrefix,
+    categoryCode: fallbackCategoryCode,
   });
   const fallbackFullIdPreview = opportunityFullId(fallbackBaseId, 1);
   const fallbackSequencePadded = fallbackNextSequence.toString().padStart(4, "0");
-  const fallbackSequenceLabel = `${CATEGORY_CODE}${fallbackSequencePadded}`;
+  const fallbackSequenceLabel = `${fallbackCategoryCode}${fallbackSequencePadded}`;
 
   const nextFullIdPreview =
     nextPreviewFromApi?.nextFullId ?? fallbackFullIdPreview;
+
+  const nextCategoryCodeForLabel = (() => {
+    if (nextPreviewFromApi?.nextFullId) {
+      const baseCode = nextPreviewFromApi.nextFullId.replace(/-V\d+$/, "");
+      const parsed = parseBaseCode(baseCode);
+      return parsed?.categoryCode ?? fallbackCategoryCode;
+    }
+    return fallbackCategoryCode;
+  })();
+
   const nextSequenceLabel = nextPreviewFromApi
-    ? `${CATEGORY_CODE}${nextPreviewFromApi.nextSequence.toString().padStart(4, "0")}`
+    ? `${nextCategoryCodeForLabel}${nextPreviewFromApi.nextSequence.toString().padStart(4, "0")}`
     : fallbackSequenceLabel;
 
   const statuses = React.useMemo(() => {
@@ -281,15 +295,23 @@ function OpportunityManagementInner() {
           </div>
 
           <div className="flex items-end justify-between gap-4 w-full lg:w-auto">
-            <div className="hidden sm:block text-right">
-              <div className="text-xs font-medium text-[#4B5563]">
-                Next available sequence
-              </div>
-              <div className="mt-1 font-mono text-base font-bold text-[#1A1A1A]">
-                {nextSequenceLabel}
-              </div>
-              <div className="mt-1 text-xs text-[#4B5563]">
-                Preview: <span className="font-mono text-[#1A1A1A]">{nextFullIdPreview}</span>
+            <div className="hidden sm:block">
+              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs font-medium text-[#4B5563]">
+                    Next available sequence
+                  </div>
+                  <div className="inline-flex items-center rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-800">
+                    Suggested
+                  </div>
+                </div>
+                <div className="mt-2 font-mono text-base font-bold text-[#1A1A1A]">
+                  {nextSequenceLabel}
+                </div>
+                <div className="mt-1 text-xs text-[#4B5563]">
+                  Preview:{" "}
+                  <span className="font-mono text-[#1A1A1A]">{nextFullIdPreview}</span>
+                </div>
               </div>
             </div>
 
@@ -327,9 +349,9 @@ function OpportunityManagementInner() {
             <div className="text-xs text-[#4B5563]">Latest revisions first</div>
           </div>
 
-          <div className="px-4 pb-4 overflow-x-auto">
-            <div className="max-h-[70vh] overflow-y-auto border border-[#E5E7EB] rounded-xl">
-              <table className="min-w-[1250px] w-full divide-y divide-[#E5E7EB]">
+            <div className="px-4 pb-4 overflow-x-auto">
+              <div className="max-h-[70vh] overflow-y-auto rounded-xl ring-1 ring-[#E5E7EB] bg-white">
+              <table className="min-w-[1250px] w-full divide-y divide-slate-200">
                 <thead className="sticky top-0 z-10 bg-[#F9FAFB]">
                   <tr>
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Opportunity ID</th>
@@ -349,7 +371,7 @@ function OpportunityManagementInner() {
                     <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#E5E7EB]">
+                <tbody className="divide-y divide-slate-200">
                   {filtered.length === 0 ? (
                     <tr>
                       <td colSpan={15} className="px-4 py-8 text-center text-sm text-[#4B5563]">
@@ -362,7 +384,10 @@ function OpportunityManagementInner() {
                       return (
                         <tr
                           key={o.baseId}
-                          className={idx % 2 === 0 ? "bg-white" : "bg-[#F9FAFB]"}
+                          className={[
+                            idx % 2 === 0 ? "bg-white" : "bg-slate-50",
+                            "transition-colors hover:bg-sky-50/70",
+                          ].join(" ")}
                         >
                           <td className="px-4 py-5">
                             <button
@@ -423,12 +448,12 @@ function OpportunityManagementInner() {
                             <div className="flex flex-col gap-2">
                               <div
                                 className={[
-                                  "inline-flex items-center rounded-lg px-3 py-1 text-xs font-semibold",
+                                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border",
                                   current.status === "Bidding"
-                                    ? "bg-[#F3F4F6] text-[#374151]"
+                                    ? "bg-[#FFEDD5] text-[#C2410C] border-[#FDBA74]"
                                     : current.status === "Awarded"
-                                      ? "bg-[#DBEAFE] text-[#1D4ED8]"
-                                      : "bg-[#F3F4F6] text-[#374151]",
+                                      ? "bg-[#DCFCE7] text-[#166534] border-[#86EFAC]"
+                                      : "bg-slate-100 text-slate-700 border-slate-200",
                                 ].join(" ")}
                               >
                                 {current.status}

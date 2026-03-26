@@ -103,6 +103,7 @@ export function DashboardShell() {
   const [activeNav, setActiveNav] = React.useState<NavKey>("opportunities");
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [idConfig, setIdConfig] = React.useState<IdConfig>(() => DEFAULT_ID_CONFIG);
+  const sidebarWidthRem = sidebarCollapsed ? 5 : 18;
 
   React.useEffect(() => {
     const loaded = loadIdConfig();
@@ -124,8 +125,13 @@ export function DashboardShell() {
           ].join(" ")}
         >
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center font-black text-white">
-              S
+            <div className="h-10 w-10 rounded-xl bg-white/15 flex items-center justify-center overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logoSirkito.jpg"
+                alt="Sirkito"
+                className="h-full w-full object-contain"
+              />
             </div>
             <div className={sidebarCollapsed ? "hidden" : "block"}>
               <div className="text-sm font-semibold text-white/90">Sirkito EBC</div>
@@ -180,15 +186,13 @@ export function DashboardShell() {
               onSelect={setActiveNav}
             />
           </nav>
-
-          <div className="mt-auto pt-4">
-            <div className={sidebarCollapsed ? "hidden" : "px-2 text-xs text-white/75"}>
-              Deep Blue + Tokenized IDs
-            </div>
-          </div>
         </aside>
 
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div
+          className="min-w-0 flex flex-col"
+          // Ensures smooth resizing when the sidebar is collapsed/expanded.
+          style={{ width: `calc(100vw - ${sidebarWidthRem}rem)` }}
+        >
           <header className="px-8 py-6 border-b border-[#E5E7EB] bg-white flex-shrink-0">
             <div className="flex items-start justify-between gap-6">
               <div>
@@ -209,7 +213,7 @@ export function DashboardShell() {
               </div>
               <div className="hidden sm:flex items-center gap-3 text-right">
                 <div className="rounded-2xl border border-sirkito-blue/10 bg-sirkito-blue/5 px-4 py-3">
-                  <div className="text-xs font-semibold text-sirkito-blue/80">Sirkito</div>
+                  <div className="text-sm font-bold text-sirkito-blue">Sirkito</div>
                   <div className="mt-1 text-sm font-semibold text-[#1A1A1A]">Corporate Admin Portal</div>
                 </div>
               </div>

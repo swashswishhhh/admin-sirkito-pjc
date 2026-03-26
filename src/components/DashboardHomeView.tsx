@@ -39,9 +39,9 @@ function DonutChart({
   const awardedLen = circumference * awardedPct;
 
   return (
-    <div className="flex items-center gap-6">
-      <div className="relative h-[120px] w-[120px]">
-        <svg width="120" height="120" viewBox="0 0 120 120" className="block">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+      <div className="relative h-[100px] w-[100px] sm:h-[120px] sm:w-[120px]">
+        <svg width="100%" height="100%" viewBox="0 0 120 120" className="block">
           <g transform="rotate(-90 60 60)">
             <circle
               cx="60"

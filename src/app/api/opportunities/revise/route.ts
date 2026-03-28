@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabaseClients";
 import { opportunityFullId } from "@/lib/idGenerators";
+import { syncZohoDealUpsertByCustomId } from "@/lib/zohoCrmDeals";
+import type { OpportunitySnapshot } from "@/lib/opportunityTypes";
 
 type OpportunityRow = {
   opportunity_id: string;
@@ -19,11 +21,67 @@ type OpportunityRow = {
   date_started: string | null;
   date_ended: string | null;
   final_amount_after_discount: number | string | null;
+  created_at: string;
+  updated_at: string | null;
 };
 
 type ReviseInput = {
   opportunityId: string;
 };
+
+const OPPORTUNITY_COLUMNS =
+  "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,date_started,date_ended,final_amount_after_discount,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
+
+function snapshotVatFromRow(v: boolean | string | null | undefined): OpportunitySnapshot["vat"] {
+  if (typeof v === "boolean") {
+    return v ? "VAT Inc." : "VAT Ex.";
+  }
+  if (typeof v === "string" && v.toLowerCase().includes("inc")) {
+    return "VAT Inc.";
+  }
+  return "VAT Ex.";
+}
+
+function normalizeMoney(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const n = parseFloat(value.replace(/,/g, "").trim());
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
+function rowToSnapshot(row: OpportunityRow): OpportunitySnapshot {
+  const createdAtMs = Date.parse(row.created_at);
+  const safeCreatedAt = Number.isNaN(createdAtMs) ? Date.now() : createdAtMs;
+  const estimated = normalizeMoney(row.estimated_amount);
+  const submitted = normalizeMoney(row.submitted_amount, estimated);
+  const finalAfterDiscount = normalizeMoney(row.final_amount_after_discount, NaN);
+  const finalAfterDiscountOrNull = Number.isFinite(finalAfterDiscount) ? finalAfterDiscount : null;
+  const allowedStatus: OpportunitySnapshot["status"] =
+    row.status === "Awarded" ? "Awarded" : "Bidding";
+
+  return {
+    version: row.version,
+    fullId: row.opportunity_id,
+    status: allowedStatus,
+    createdAt: safeCreatedAt,
+    projectName: row.project_name,
+    location: row.location,
+    client: row.client_name,
+    contactPerson: row.contact_person ?? "",
+    contact: row.contact ?? "",
+    description: row.description ?? "",
+    vat: snapshotVatFromRow(row.vat),
+    estimatedAmount: estimated,
+    submittedAmount: submitted,
+    dateStarted: row.date_started ?? null,
+    dateEnded: row.date_ended ?? null,
+    finalAmountAfterDiscount: finalAfterDiscountOrNull,
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -45,6 +103,7 @@ export async function POST(request: Request) {
     }
 
     const current = row as unknown as OpportunityRow;
+    const previousOpportunityId = current.opportunity_id;
     const nextVersion = Number(current.version) + 1;
     const nowIso = new Date().toISOString();
     const nextOpportunityId = opportunityFullId(current.base_code, nextVersion);
@@ -70,18 +129,51 @@ export async function POST(request: Request) {
       updated_at: nowIso,
     };
 
-    const { error: insertError } = await supabase
+    const { data: inserted, error: insertError } = await supabase
       .from("opportunities")
-      .insert(insertPayload);
+      .insert(insertPayload)
+      .select(OPPORTUNITY_COLUMNS)
+      .single();
 
     if (insertError) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true }, { status: 201 });
+    const newRow = inserted as unknown as OpportunityRow;
+    const snapshot = rowToSnapshot(newRow);
+
+    let zohoSynced = false;
+    let zohoError: string | null = null;
+    try {
+      const submittedForZoho = normalizeMoney(newRow.submitted_amount, normalizeMoney(newRow.estimated_amount));
+      await syncZohoDealUpsertByCustomId({
+        lookupCustomOpportunityId: previousOpportunityId,
+        fields: {
+          Deal_Name: newRow.project_name,
+          Account_Name: newRow.client_name,
+          Description: `${newRow.description ?? ""}\nLocation: ${newRow.location}`,
+          Amount: Number.isFinite(submittedForZoho) ? submittedForZoho : 0,
+          Custom_Opportunity_ID: nextOpportunityId,
+        },
+      });
+      zohoSynced = true;
+    } catch (err) {
+      zohoError = err instanceof Error ? err.message : "Zoho sync failed.";
+      console.error("Zoho sync error (revise):", zohoError);
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        newOpportunityId: nextOpportunityId,
+        snapshot,
+        zohoSynced,
+        zohoError,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to revise opportunity.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

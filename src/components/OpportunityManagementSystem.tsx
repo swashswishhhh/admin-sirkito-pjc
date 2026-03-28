@@ -18,7 +18,7 @@ import {
 import { parseBaseCode } from "@/lib/opportunityIdSequence";
 import { formatMoney } from "@/lib/opportunityValidation";
 import { OpportunityCreateModal } from "./OpportunityCreateModal";
-import { OpportunityEditModal } from "./OpportunityEditModal";
+import { OpportunityEditModal, type OpportunityEditValues } from "./OpportunityEditModal";
 
 async function copyTextToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
@@ -218,15 +218,35 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ opportunityId: latest.fullId }),
       });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        snapshot?: ReturnType<typeof getLatestVersion>;
+        zohoSynced?: boolean;
+        zohoError?: string | null;
+      };
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Failed to revise.");
+        throw new Error(data.error ?? "Failed to revise.");
       }
 
       setConfirmOpen(false);
       setOpportunityToRevise(null);
       await loadOpportunities();
-      showToast("Opportunity revised (new version created).");
+
+      if (data.snapshot) {
+        setEditSnapshot(data.snapshot);
+        setEditOpen(true);
+      }
+
+      if (data.zohoSynced) {
+        showToast("Revision created and synced to Zoho.");
+      } else {
+        showToast(
+          data.zohoError
+            ? `Revision saved. Zoho sync failed: ${data.zohoError}`
+            : "Revision saved. Zoho sync failed or skipped.",
+          4500,
+        );
+      }
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Failed to revise opportunity.");
     }
@@ -607,27 +627,50 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         opportunity={editSnapshot}
-        onSave={async (values) => {
+        onSave={async (values: OpportunityEditValues) => {
           if (!editSnapshot) return { ok: false, error: "No opportunity selected." };
           const response = await fetch("/api/opportunities/edit", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               opportunityId: editSnapshot.fullId,
+              projectName: values.projectName,
+              location: values.location,
+              client: values.client,
+              contactPerson: values.contactPerson,
+              contact: values.contact,
+              description: values.description,
+              vat: values.vat,
+              estimatedAmount: values.estimatedAmount,
+              submittedAmount: values.submittedAmount,
+              status: values.status,
               dateStarted: values.dateStarted,
               dateEnded: values.dateEnded,
-              status: values.status,
               finalAmountAfterDiscount: values.finalAmountAfterDiscount,
             }),
           });
 
-          const data = (await response.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+          const data = (await response.json().catch(() => ({}))) as {
+            error?: string;
+            ok?: boolean;
+            zohoSynced?: boolean;
+            zohoError?: string | null;
+          };
           if (!response.ok) {
             return { ok: false, error: data.error ?? "Unable to save changes." };
           }
 
           setEditOpen(false);
-          showToast("Opportunity updated.");
+          if (data.zohoSynced) {
+            showToast("Opportunity updated and synced to Zoho.");
+          } else {
+            showToast(
+              data.zohoError
+                ? `Saved to Sirkito. Zoho sync failed: ${data.zohoError}`
+                : "Saved to Sirkito. Zoho sync failed or skipped.",
+              4500,
+            );
+          }
           void loadOpportunities();
           return { ok: true };
         }}

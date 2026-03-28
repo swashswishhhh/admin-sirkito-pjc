@@ -88,3 +88,52 @@ export async function tryRefreshZohoAccessToken(): Promise<{
   };
 }
 
+type ZohoTokenFullJson = {
+  access_token?: string;
+  api_domain?: string;
+  error?: string;
+  error_description?: string;
+};
+
+/** Used by CRM sync — throws with Zoho error details if refresh fails. */
+export async function getZohoAccessTokenOrThrow(): Promise<{
+  accessToken: string;
+  apiDomain: string;
+}> {
+  const { clientId, clientSecret, refreshToken, accountsUrl } = readZohoOAuthEnvOrThrow();
+
+  const tokenUrl = `${accountsUrl}/oauth/v2/token`;
+  const body = new URLSearchParams();
+  body.set("grant_type", "refresh_token");
+  body.set("refresh_token", refreshToken);
+  body.set("client_id", clientId);
+  body.set("client_secret", clientSecret);
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    cache: "no-store",
+  });
+
+  const raw = await response.text();
+  let json: ZohoTokenFullJson;
+  try {
+    json = JSON.parse(raw) as ZohoTokenFullJson;
+  } catch {
+    throw new Error(`Zoho token endpoint returned non-JSON (status ${response.status}).`);
+  }
+
+  if (response.ok && json.access_token) {
+    const apiDomain =
+      json.api_domain?.trim() ||
+      process.env.ZOHO_API_DOMAIN?.trim() ||
+      "https://www.zohoapis.com";
+    return { accessToken: json.access_token, apiDomain };
+  }
+
+  const err = json.error ?? "Unable to retrieve Zoho access token.";
+  const detail = json.error_description?.trim();
+  throw new Error(detail ? `${err} — ${detail}` : err);
+}
+

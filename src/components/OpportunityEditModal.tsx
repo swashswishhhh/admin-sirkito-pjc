@@ -2,14 +2,28 @@
 
 import * as React from "react";
 import { SirkitoButton } from "./SirkitoButton";
-import type { OpportunitySnapshot, OpportunityStatus } from "@/lib/opportunityTypes";
-import { parseMoney } from "@/lib/opportunityValidation";
+import type { OpportunitySnapshot, OpportunityStatus, VatType } from "@/lib/opportunityTypes";
+import {
+  formatMoney,
+  parseMoney,
+  validateContactNumber,
+  validateRequired,
+} from "@/lib/opportunityValidation";
 
-type EditValues = {
+export type OpportunityEditValues = {
+  projectName: string;
+  location: string;
+  client: string;
+  contactPerson: string;
+  contact: string;
+  description: string;
+  vat: VatType;
+  estimatedAmount: number;
+  submittedAmount: number;
   status: OpportunityStatus;
-  dateStarted: string | null; // YYYY-MM-DD or null
-  dateEnded: string | null; // YYYY-MM-DD or null
-  finalAmountAfterDiscount: number;
+  dateStarted: string | null;
+  dateEnded: string | null;
+  finalAmountAfterDiscount: number | null;
 };
 
 export function OpportunityEditModal({
@@ -21,28 +35,55 @@ export function OpportunityEditModal({
   open: boolean;
   onClose: () => void;
   opportunity: OpportunitySnapshot | null;
-  onSave: (values: EditValues) => Promise<{ ok: boolean; error?: string }>;
+  onSave: (values: OpportunityEditValues) => Promise<{ ok: boolean; error?: string }>;
 }) {
-  const [values, setValues] = React.useState<EditValues>({
+  const [values, setValues] = React.useState<OpportunityEditValues>({
+    projectName: "",
+    location: "",
+    client: "",
+    contactPerson: "",
+    contact: "",
+    description: "",
+    vat: "VAT Ex.",
+    estimatedAmount: 0,
+    submittedAmount: 0,
     status: "Bidding",
     dateStarted: null,
     dateEnded: null,
-    finalAmountAfterDiscount: 0,
+    finalAmountAfterDiscount: null,
   });
-  const [finalAmountInput, setFinalAmountInput] = React.useState("0");
+
+  const [estimatedInput, setEstimatedInput] = React.useState("0");
+  const [submittedInput, setSubmittedInput] = React.useState("0");
+  const [finalInput, setFinalInput] = React.useState("0");
+
   const [error, setError] = React.useState<string | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) return;
-    if (!opportunity) return;
+    if (!open || !opportunity) return;
     setValues({
+      projectName: opportunity.projectName,
+      location: opportunity.location,
+      client: opportunity.client,
+      contactPerson: opportunity.contactPerson,
+      contact: opportunity.contact,
+      description: opportunity.description,
+      vat: opportunity.vat,
+      estimatedAmount: opportunity.estimatedAmount,
+      submittedAmount: opportunity.submittedAmount,
       status: opportunity.status,
       dateStarted: opportunity.dateStarted ?? null,
       dateEnded: opportunity.dateEnded ?? null,
-      finalAmountAfterDiscount: opportunity.finalAmountAfterDiscount ?? 0,
+      finalAmountAfterDiscount: opportunity.finalAmountAfterDiscount,
     });
-    setFinalAmountInput(String(opportunity.finalAmountAfterDiscount ?? 0));
+    setEstimatedInput(String(opportunity.estimatedAmount));
+    setSubmittedInput(String(opportunity.submittedAmount));
+    setFinalInput(
+      opportunity.finalAmountAfterDiscount === null || opportunity.finalAmountAfterDiscount === undefined
+        ? "0"
+        : String(opportunity.finalAmountAfterDiscount),
+    );
     setError(null);
   }, [open, opportunity]);
 
@@ -51,17 +92,55 @@ export function OpportunityEditModal({
     setError(null);
     setIsSaving(true);
     try {
-      const parsed = parseMoney(finalAmountInput, "Final Amount (after discount)");
-      if (parsed.error) {
-        setError(parsed.error);
+      const checks: Array<{ label: string; value: string }> = [
+        { label: "Project Name", value: values.projectName },
+        { label: "Location", value: values.location },
+        { label: "Client", value: values.client },
+        { label: "Contact Person", value: values.contactPerson },
+        { label: "Contact", value: values.contact },
+        { label: "Description", value: values.description },
+      ];
+      for (const c of checks) {
+        const e = validateRequired(c.value, c.label);
+        if (e) {
+          setError(e);
+          return;
+        }
+      }
+
+      const contactErr = validateContactNumber(values.contact);
+      if (contactErr) {
+        setError(contactErr);
         return;
       }
 
+      const est = parseMoney(estimatedInput, "Estimated Amount");
+      if (est.error) {
+        setError(est.error);
+        return;
+      }
+      const sub = parseMoney(submittedInput, "Submitted Amount");
+      if (sub.error) {
+        setError(sub.error);
+        return;
+      }
+
+      const trimmedFinal = finalInput.trim();
+      let finalVal: number | null = null;
+      if (trimmedFinal.length > 0) {
+        const fin = parseMoney(finalInput, "Final Amount (after discount)");
+        if (fin.error) {
+          setError(fin.error);
+          return;
+        }
+        finalVal = fin.value;
+      }
+
       const result = await onSave({
-        status: values.status,
-        dateStarted: values.dateStarted,
-        dateEnded: values.dateEnded,
-        finalAmountAfterDiscount: parsed.value,
+        ...values,
+        estimatedAmount: est.value,
+        submittedAmount: sub.value,
+        finalAmountAfterDiscount: finalVal,
       });
 
       if (!result.ok) {
@@ -76,6 +155,10 @@ export function OpportunityEditModal({
 
   if (!open || !opportunity) return null;
 
+  const fieldClass =
+    "mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60";
+  const labelClass = "text-xs font-semibold text-slate-600";
+
   return (
     <div
       role="dialog"
@@ -85,22 +168,23 @@ export function OpportunityEditModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-[90%] max-w-[720px] max-h-[calc(100vh-2rem)] rounded-2xl bg-white shadow-lg border border-slate-200 overflow-hidden sirkito-modal-enter flex flex-col">
+      <div className="w-[95%] max-w-[900px] max-h-[calc(100vh-2rem)] rounded-2xl bg-white shadow-lg border border-slate-200 overflow-hidden sirkito-modal-enter flex flex-col">
         <div className="px-7 py-6 border-b border-slate-200 bg-slate-50 flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-slate-900 font-bold text-lg">Edit Opportunity</div>
               <div className="mt-1 text-xs text-slate-500">
                 Opportunity ID:{" "}
-                <span className="font-mono font-semibold text-slate-900">
-                  {opportunity.fullId}
-                </span>
+                <span className="font-mono font-semibold text-slate-900">{opportunity.fullId}</span>
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">
+                All fields below sync to Supabase and Zoho CRM (Deal mapped by Custom Opportunity ID).
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sirkito-gold/50"
+              className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sirkito-blue/30"
               aria-label="Close"
               disabled={isSaving}
             >
@@ -116,48 +200,146 @@ export function OpportunityEditModal({
             </div>
           ) : null}
 
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className={labelClass}>Project Name</label>
+              <input
+                value={values.projectName}
+                onChange={(e) => setValues((v) => ({ ...v, projectName: e.target.value }))}
+                className={fieldClass}
+              />
+            </div>
+
             <div>
-              <div className="text-xs font-semibold text-slate-500 mb-3">Status</div>
+              <label className={labelClass}>Location</label>
+              <input
+                value={values.location}
+                onChange={(e) => setValues((v) => ({ ...v, location: e.target.value }))}
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Client</label>
+              <input
+                value={values.client}
+                onChange={(e) => setValues((v) => ({ ...v, client: e.target.value }))}
+                className={fieldClass}
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>Contact Person</label>
+              <input
+                value={values.contactPerson}
+                onChange={(e) => setValues((v) => ({ ...v, contactPerson: e.target.value }))}
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Contact Number</label>
+              <input
+                value={values.contact}
+                onChange={(e) => setValues((v) => ({ ...v, contact: e.target.value }))}
+                className={fieldClass}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className={labelClass}>Description</label>
+              <textarea
+                value={values.description}
+                onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
+                rows={3}
+                className={`${fieldClass} h-auto min-h-[88px] py-3`}
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>VAT</label>
+              <select
+                value={values.vat}
+                onChange={(e) => setValues((v) => ({ ...v, vat: e.target.value as VatType }))}
+                className={fieldClass}
+              >
+                <option value="VAT Ex.">VAT Ex.</option>
+                <option value="VAT Inc.">VAT Inc.</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Status</label>
               <select
                 value={values.status}
-                onChange={(e) => setValues((v) => ({ ...v, status: e.target.value as OpportunityStatus }))}
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
+                onChange={(e) =>
+                  setValues((v) => ({ ...v, status: e.target.value as OpportunityStatus }))
+                }
+                className={fieldClass}
               >
                 <option value="Bidding">Bidding</option>
                 <option value="Awarded">Awarded</option>
               </select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <div className="text-xs font-semibold text-slate-500 mb-3">Date Started</div>
-                <input
-                  type="date"
-                  value={values.dateStarted ?? ""}
-                  onChange={(e) => setValues((v) => ({ ...v, dateStarted: e.target.value || null }))}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                />
+            <div>
+              <label className={labelClass}>Estimated Amount</label>
+              <input
+                value={estimatedInput}
+                onChange={(e) => setEstimatedInput(e.target.value)}
+                inputMode="decimal"
+                className={fieldClass}
+              />
+              <div className="mt-1 text-xs text-slate-500 font-mono">
+                {formatMoney(Number(estimatedInput.replace(/,/g, "")) || 0)}
               </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-500 mb-3">Date Ended</div>
-                <input
-                  type="date"
-                  value={values.dateEnded ?? ""}
-                  onChange={(e) => setValues((v) => ({ ...v, dateEnded: e.target.value || null }))}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
-                />
+            </div>
+            <div>
+              <label className={labelClass}>Submitted Amount</label>
+              <input
+                value={submittedInput}
+                onChange={(e) => setSubmittedInput(e.target.value)}
+                inputMode="decimal"
+                className={fieldClass}
+              />
+              <div className="mt-1 text-xs text-slate-500 font-mono">
+                {formatMoney(Number(submittedInput.replace(/,/g, "")) || 0)}
               </div>
             </div>
 
             <div>
-              <div className="text-xs font-semibold text-slate-500 mb-3">Final Amount (after discount)</div>
+              <label className={labelClass}>Date Started</label>
               <input
-                value={finalAmountInput}
-                onChange={(e) => setFinalAmountInput(e.target.value)}
-                inputMode="decimal"
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-gold/50 focus:border-sirkito-gold/60"
+                type="date"
+                value={values.dateStarted ?? ""}
+                onChange={(e) =>
+                  setValues((v) => ({ ...v, dateStarted: e.target.value || null }))
+                }
+                className={fieldClass}
               />
+            </div>
+            <div>
+              <label className={labelClass}>Date Ended</label>
+              <input
+                type="date"
+                value={values.dateEnded ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, dateEnded: e.target.value || null }))}
+                className={fieldClass}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className={labelClass}>
+                Final Amount (after discount) — leave blank to clear
+              </label>
+              <input
+                value={finalInput}
+                onChange={(e) => setFinalInput(e.target.value)}
+                inputMode="decimal"
+                className={fieldClass}
+              />
+              <div className="mt-1 text-xs text-slate-500 font-mono">
+                {finalInput.trim()
+                  ? formatMoney(Number(finalInput.replace(/,/g, "")) || 0)
+                  : "—"}
+              </div>
             </div>
           </div>
         </div>
@@ -176,4 +358,3 @@ export function OpportunityEditModal({
     </div>
   );
 }
-

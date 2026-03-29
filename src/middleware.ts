@@ -4,15 +4,10 @@ import type { NextRequest } from "next/server";
 const LOGIN_PATH = "/login";
 
 /**
- * We check for any cookie whose name starts with "sb-" (Supabase auth cookies).
- * Supabase sets "sb-<project-ref>-auth-token" after a successful sign-in when
- * persistSession:true. We only need to verify its presence here — the actual
- * validity of the token is verified on the server in sensitive API routes via
- * the service-role client.
+ * We check for the explicit session cookie set by our Server Action.
  */
 function hasSupabaseSession(request: NextRequest): boolean {
-  const cookieNames = request.cookies.getAll().map((c) => c.name);
-  return cookieNames.some((name) => name.startsWith("sb-") && name.endsWith("-auth-token"));
+  return request.cookies.has("sirkito-admin-session");
 }
 
 export function middleware(request: NextRequest) {

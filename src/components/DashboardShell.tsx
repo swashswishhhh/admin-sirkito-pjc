@@ -5,8 +5,8 @@ import { OpportunityManagementSystem } from "./OpportunityManagementSystem";
 import { DashboardHomeView } from "./DashboardHomeView";
 import { DashboardSettingsView } from "./DashboardSettingsView";
 import { DEFAULT_ID_CONFIG, loadIdConfig, saveIdConfig, type IdConfig } from "@/lib/idConfigStorage";
-import { createSupabaseBrowserClient } from "@/lib/supabaseClients";
 import { useRouter } from "next/navigation";
+import { logoutAction } from "@/app/actions/auth";
 
 type NavKey = "dashboard" | "opportunities" | "settings";
 
@@ -121,8 +121,7 @@ export function DashboardShell() {
   async function handleLogout() {
     setIsLoggingOut(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      await supabase.auth.signOut();
+      await logoutAction();
     } finally {
       router.push("/login");
       router.refresh();

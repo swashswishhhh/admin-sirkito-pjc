@@ -1,9 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabaseClients";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { loginAction } from "@/app/actions/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +17,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const response = await loginAction(email.trim(), password);
 
-      if (authError) {
-        setError(authError.message);
+      if (!response.ok) {
+        setError(response.error ?? "Invalid credentials.");
         return;
       }
 

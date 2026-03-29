@@ -284,7 +284,7 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
       : null;
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
       <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-4">
         <div className="flex flex-col lg:flex-row lg:items-end gap-4">
           <div className="flex-1">
@@ -337,21 +337,18 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
 
           <div className="flex items-end justify-between gap-4 w-full lg:w-auto">
             <div className="hidden sm:block">
-              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-medium text-[#4B5563]">
-                    Next available sequence
-                  </div>
-                  <div className="inline-flex items-center rounded-full bg-sky-100 px-2 py-1 text-[11px] font-semibold text-sky-800">
-                    Suggested
-                  </div>
+              {/* Reference card — looks like an info chip, not a button */}
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 min-w-[200px]">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Next Available</span>
+                  <span className="ml-auto rounded-full bg-sky-100 border border-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-700 uppercase tracking-wide">Suggested</span>
                 </div>
-                <div className="mt-2 font-mono text-base font-bold text-[#1A1A1A]">
+                <div className="font-mono text-base font-bold text-[#1A1A1A] tracking-wide">
                   {nextSequenceLabel}
                 </div>
-                <div className="mt-1 text-xs text-[#4B5563]">
-                  Preview:{" "}
-                  <span className="font-mono text-[#1A1A1A]">{nextFullIdPreview}</span>
+                <div className="mt-1 text-[11px] text-slate-400 font-mono">
+                  {nextFullIdPreview}
                 </div>
               </div>
             </div>
@@ -395,21 +392,21 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
               <table className="min-w-[1250px] w-full divide-y divide-slate-200">
                 <thead className="sticky top-0 z-10 bg-[#F9FAFB]">
                   <tr>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Opportunity ID</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Project Name</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Location</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Client</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Contact Person</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Contact</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Description</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">VAT</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Estimated Amount</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Submitted Amount</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Date Started</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Date Ended</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Final Amount (after discount)</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Version</th>
-                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3">Status</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'150px'}}>Opportunity ID</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'160px'}}>Project Name</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'120px'}}>Location</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'140px'}}>Client</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'140px'}}>Contact Person</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'130px'}}>Contact</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'180px'}}>Description</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{width:'80px',minWidth:'80px'}}>VAT</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'130px'}}>Est. Amount</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'130px'}}>Sub. Amount</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'110px'}}>Date Started</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'110px'}}>Date Ended</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'140px'}}>Final Amount</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{width:'70px',minWidth:'70px'}}>Ver.</th>
+                    <th className="text-left text-xs font-semibold text-[#111827] px-4 py-3 whitespace-nowrap" style={{minWidth:'200px'}}>Status / Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">

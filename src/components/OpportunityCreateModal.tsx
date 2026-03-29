@@ -16,139 +16,43 @@ type CreateValues = {
   vat: VatType;
   estimatedAmount: number;
   submittedAmount: number;
-  dateStarted: string | null; // YYYY-MM-DD or null
-  dateEnded: string | null; // YYYY-MM-DD or null
+  dateStarted: string | null;
+  dateEnded: string | null;
   status: "Bidding" | "Awarded";
   finalAmountAfterDiscount: number;
 };
 
-function FloatingTextField({
+/** Shared label+input field with the label displayed ABOVE the input. */
+function FormField({
+  id,
   label,
-  value,
-  onChange,
-  type = "text",
-  inputMode,
-  placeholder,
+  required,
+  children,
 }: {
+  id?: string;
   label: string;
-  value: string;
-  onChange: (next: string) => void;
-  type?: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-  placeholder?: string;
+  required?: boolean;
+  children: React.ReactNode;
 }) {
-  const [focused, setFocused] = React.useState(false);
-  const active = focused || value.trim().length > 0;
-
   return (
-    <div className="relative">
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        // Keep placeholder as whitespace so the label can float cleanly.
-        placeholder={placeholder ?? " "}
-        inputMode={inputMode}
-        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 pt-4 pb-0 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60"
-      />
+    <div className="flex flex-col gap-1.5">
       <label
-        className={[
-          "absolute left-4 transition-all pointer-events-none select-none",
-          active ? "top-1 text-[11px] text-sirkito-blue/80" : "top-3 text-sm text-slate-400",
-        ].join(" ")}
+        htmlFor={id}
+        className="text-xs font-semibold text-slate-600 uppercase tracking-wide"
       >
         {label}
+        {required && <span className="ml-0.5 text-red-400">*</span>}
       </label>
+      {children}
     </div>
   );
 }
 
-function FloatingSelectField({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  options: Array<{ value: string; label: string }>;
-}) {
-  const [focused, setFocused] = React.useState(false);
-  const active = focused || value.trim().length > 0;
+const inputCls =
+  "h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 transition focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60 disabled:bg-slate-50 disabled:text-slate-400";
 
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        className="h-10 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 pt-4 pb-0 pr-9 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </div>
-      <label
-        className={[
-          "absolute left-4 transition-all pointer-events-none select-none",
-          active ? "top-1 text-[11px] text-sirkito-blue/80" : "top-3 text-sm text-slate-400",
-        ].join(" ")}
-      >
-        {label}
-      </label>
-    </div>
-  );
-}
-
-function FloatingTextAreaField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  rows = 4,
-}: {
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  placeholder?: string;
-  rows?: number;
-}) {
-  const [focused, setFocused] = React.useState(false);
-  const active = focused || value.trim().length > 0;
-
-  return (
-    <div className="relative">
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        placeholder={placeholder ?? " "}
-        rows={rows}
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 pt-6 pb-3 text-sm text-slate-900 shadow-sm outline-none focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60 resize-y"
-      />
-      <label
-        className={[
-          "absolute left-4 transition-all pointer-events-none select-none",
-          active ? "top-2 text-[11px] text-sirkito-blue/80" : "top-4 text-sm text-slate-400",
-        ].join(" ")}
-      >
-        {label}
-      </label>
-    </div>
-  );
-}
+const selectCls =
+  "h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60 disabled:bg-slate-50 appearance-none";
 
 export function OpportunityCreateModal({
   open,
@@ -162,7 +66,6 @@ export function OpportunityCreateModal({
   open: boolean;
   onClose: () => void;
   nextFullIdPreview: string;
-  /** True while fetching the next ID from Supabase (latest row by created_at). */
   nextPreviewLoading?: boolean;
   isSubmitting: boolean;
   idConfig: IdConfig;
@@ -187,7 +90,6 @@ export function OpportunityCreateModal({
   const [estimatedAmountInput, setEstimatedAmountInput] = React.useState("0");
   const [submittedAmountInput, setSubmittedAmountInput] = React.useState("0");
   const [finalAmountAfterDiscountInput, setFinalAmountAfterDiscountInput] = React.useState("0");
-
   const [error, setError] = React.useState<string | null>(null);
   const [apiNextFullIdPreview, setApiNextFullIdPreview] = React.useState<string | null>(null);
   const [apiNextLoading, setApiNextLoading] = React.useState(false);
@@ -203,7 +105,6 @@ export function OpportunityCreateModal({
 
   React.useEffect(() => {
     if (!open) return;
-    // Reset each time modal opens to avoid confusing stale data.
     setValues({
       projectName: "",
       location: "",
@@ -226,6 +127,7 @@ export function OpportunityCreateModal({
     setApiNextFullIdPreview(null);
   }, [open]);
 
+  // Debounced ID preview refresh when description changes
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -237,19 +139,10 @@ export function OpportunityCreateModal({
         if (idConfig.yearPrefixMode !== "AUTO") qs.set("yearPrefix", idConfig.yearPrefixMode);
         qs.set("sequenceStart", String(idConfig.sequenceStart));
         qs.set("description", description);
-        const response = await fetch(`/api/opportunities/next-preview?${qs.toString()}`, {
-          cache: "no-store",
-        });
-        const data = (await response.json()) as {
-          nextFullId?: string;
-          error?: string;
-        };
+        const response = await fetch(`/api/opportunities/next-preview?${qs.toString()}`, { cache: "no-store" });
+        const data = (await response.json()) as { nextFullId?: string; error?: string };
         if (!cancelled) {
-          if (response.ok && typeof data.nextFullId === "string") {
-            setApiNextFullIdPreview(data.nextFullId);
-          } else {
-            setApiNextFullIdPreview(null);
-          }
+          setApiNextFullIdPreview(response.ok && typeof data.nextFullId === "string" ? data.nextFullId : null);
         }
       } catch {
         if (!cancelled) setApiNextFullIdPreview(null);
@@ -257,17 +150,12 @@ export function OpportunityCreateModal({
         if (!cancelled) setApiNextLoading(false);
       }
     }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
+    return () => { cancelled = true; window.clearTimeout(t); };
   }, [open, values.description, idConfig.yearPrefixMode, idConfig.sequenceStart]);
 
   async function validateAndSubmit() {
     setError(null);
-
-    const requiredChecks: Array<{ label: string; value: string }> = [
+    const required = [
       { label: "Project Name", value: values.projectName },
       { label: "Location", value: values.location },
       { label: "Client", value: values.client },
@@ -275,51 +163,27 @@ export function OpportunityCreateModal({
       { label: "Contact", value: values.contact },
       { label: "Description", value: values.description },
     ];
-
-    for (const check of requiredChecks) {
-      const maybeErr = validateRequired(check.value, check.label);
-      if (maybeErr) {
-        setError(maybeErr);
-        return;
-      }
+    for (const c of required) {
+      const e = validateRequired(c.value, c.label);
+      if (e) { setError(e); return; }
     }
-
     const contactErr = validateContactNumber(values.contact);
-    if (contactErr) {
-      setError(contactErr);
-      return;
-    }
+    if (contactErr) { setError(contactErr); return; }
 
     const est = parseMoney(estimatedAmountInput, "Estimated Amount");
-    if (est.error) {
-      setError(est.error);
-      return;
-    }
-    const submitted = parseMoney(submittedAmountInput, "Submitted Amount");
-    if (submitted.error) {
-      setError(submitted.error);
-      return;
-    }
-
-    const finalParsed = parseMoney(
-      finalAmountAfterDiscountInput,
-      "Final Amount (after discount)",
-    );
-    if (finalParsed.error) {
-      setError(finalParsed.error);
-      return;
-    }
+    if (est.error) { setError(est.error); return; }
+    const sub = parseMoney(submittedAmountInput, "Submitted Amount");
+    if (sub.error) { setError(sub.error); return; }
+    const fin = parseMoney(finalAmountAfterDiscountInput, "Final Amount (after discount)");
+    if (fin.error) { setError(fin.error); return; }
 
     const result = await onSubmit({
       ...values,
       estimatedAmount: est.value,
-      submittedAmount: submitted.value,
-      finalAmountAfterDiscount: finalParsed.value,
+      submittedAmount: sub.value,
+      finalAmountAfterDiscount: fin.value,
     });
-
-    if (!result.ok) {
-      setError(result.error ?? "Unable to save opportunity.");
-    }
+    if (!result.ok) setError(result.error ?? "Unable to save opportunity.");
   }
 
   if (!open) return null;
@@ -329,240 +193,282 @@ export function OpportunityCreateModal({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-[90%] max-w-[800px] max-h-[calc(100vh-2rem)] rounded-2xl bg-white shadow-lg border border-slate-200 overflow-hidden sirkito-modal-enter flex flex-col">
-        <div className="px-7 py-6 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+      <div className="w-[95%] max-w-[820px] max-h-[calc(100vh-2rem)] rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden sirkito-modal-enter flex flex-col">
+
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <div className="px-7 py-5 border-b border-slate-100 bg-gradient-to-r from-[#003366] to-[#00509e] flex-shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-slate-900 font-bold text-lg flex items-center gap-2">
-                <span aria-hidden="true" className="text-sirkito-gold">
-                  +
-                </span>
+              <div className="text-white font-bold text-lg flex items-center gap-2">
+                <span aria-hidden="true" className="text-yellow-300 text-xl">+</span>
                 Add Opportunity
               </div>
-              <div className="mt-1 text-sm text-slate-600">
-                Enter project details to generate an ID.
-              </div>
-              <div className="mt-2 text-xs text-slate-500">Auto-generated Next ID preview</div>
-              <div className="mt-1">
-                <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm font-semibold text-slate-900">
-                  {apiNextLoading || nextPreviewLoading ? (
-                    <span className="text-slate-500 font-normal italic">Resolving…</span>
-                  ) : (
-                    apiNextFullIdPreview ?? nextFullIdPreview
-                  )}
+              <div className="mt-1 text-sm text-white/70">Enter project details to generate a versioned ID.</div>
+              {/* ID Preview */}
+              <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm px-4 py-2">
+                <div>
+                  <div className="text-[11px] text-white/60 uppercase tracking-wide">Next ID Preview</div>
+                  <div className="mt-0.5 font-mono text-sm font-bold text-white">
+                    {apiNextLoading || nextPreviewLoading ? (
+                      <span className="italic font-normal text-white/60">Resolving…</span>
+                    ) : (
+                      apiNextFullIdPreview ?? nextFullIdPreview
+                    )}
+                  </div>
                 </div>
-                <div className="mt-1 text-[11px] text-slate-500">Read-only system token</div>
+                <div className="rounded-full bg-yellow-400/20 border border-yellow-400/30 px-2 py-0.5 text-[10px] font-semibold text-yellow-200 uppercase tracking-wider">
+                  Auto
+                </div>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-2 py-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sirkito-blue/30"
+              className="rounded-lg p-1.5 text-white/70 hover:text-white hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/30 transition"
               aria-label="Close"
               disabled={isSubmitting}
             >
-              ✕
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             </button>
           </div>
         </div>
 
-        <div className="px-7 py-6 overflow-y-auto flex-1">
+        {/* ── Body ───────────────────────────────────────────────────── */}
+        <div className="px-7 py-6 overflow-y-auto flex-1 space-y-7">
           {error ? (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-start gap-2">
+              <svg className="h-4 w-4 mt-0.5 flex-shrink-0 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               {error}
             </div>
           ) : null}
 
-          <div className="space-y-6">
-            <div>
-              <div className="text-xs font-semibold text-slate-500 mb-3">
-                SECTION 1-2: BASIC DETAILS
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FloatingTextField
-                  label="Project Name"
+          {/* Section 1: Basic Details */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-px flex-1 bg-slate-100" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Basic Details</span>
+              <div className="h-px flex-1 bg-slate-100" />
+            </div>
+            {/* Row 1: Project Name + Location */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <FormField id="create-project-name" label="Project Name" required>
+                <input
+                  id="create-project-name"
+                  type="text"
                   value={values.projectName}
-                  onChange={(next) =>
-                    setValues((v) => ({ ...v, projectName: next }))
-                  }
-                  placeholder="e.g. Main Substation Upgrade - Lot A"
+                  onChange={(e) => setValues((v) => ({ ...v, projectName: e.target.value }))}
+                  placeholder="Enter project name..."
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
-                <FloatingTextField
-                  label="Location"
+              </FormField>
+              <FormField id="create-location" label="Location" required>
+                <input
+                  id="create-location"
+                  type="text"
                   value={values.location}
-                  onChange={(next) =>
-                    setValues((v) => ({ ...v, location: next }))
-                  }
-                  placeholder="e.g. Helsinki"
+                  onChange={(e) => setValues((v) => ({ ...v, location: e.target.value }))}
+                  placeholder="Enter location..."
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
-                <FloatingTextField
-                  label="Client"
+              </FormField>
+            </div>
+            {/* Row 2: Client + Contact Person */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <FormField id="create-client" label="Client" required>
+                <input
+                  id="create-client"
+                  type="text"
                   value={values.client}
-                  onChange={(next) => setValues((v) => ({ ...v, client: next }))}
-                  placeholder="e.g. ABC Oy"
+                  onChange={(e) => setValues((v) => ({ ...v, client: e.target.value }))}
+                  placeholder="Enter client name..."
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
-                <FloatingTextField
-                  label="Contact Person"
+              </FormField>
+              <FormField id="create-contact-person" label="Contact Person" required>
+                <input
+                  id="create-contact-person"
+                  type="text"
                   value={values.contactPerson}
-                  onChange={(next) =>
-                    setValues((v) => ({ ...v, contactPerson: next }))
-                  }
-                  placeholder="e.g. Matti Korhonen"
+                  onChange={(e) => setValues((v) => ({ ...v, contactPerson: e.target.value }))}
+                  placeholder="Enter contact person..."
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
-                <FloatingTextField
-                  label="Contact"
+              </FormField>
+            </div>
+            {/* Row 3: Contact (full-width) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField id="create-contact" label="Contact Number" required>
+                <input
+                  id="create-contact"
+                  type="tel"
                   value={values.contact}
-                  onChange={(next) => setValues((v) => ({ ...v, contact: next }))}
-                  placeholder="e.g. +358 40 123 4567"
+                  onChange={(e) => setValues((v) => ({ ...v, contact: e.target.value }))}
+                  placeholder="Enter contact number..."
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
-              </div>
+              </FormField>
             </div>
+          </section>
 
-            <div>
-              <div className="text-xs font-semibold text-slate-500 mb-3">
-                SECTION 3: DESCRIPTION
-              </div>
-              <FloatingTextAreaField
-                label="Description"
+          {/* Section 2: Description */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-px flex-1 bg-slate-100" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Description</span>
+              <div className="h-px flex-1 bg-slate-100" />
+            </div>
+            <FormField id="create-description" label="Scope / Description" required>
+              <textarea
+                id="create-description"
                 value={values.description}
-                onChange={(next) =>
-                  setValues((v) => ({ ...v, description: next }))
-                }
-                placeholder="Short scope, notes, or reference details..."
-                rows={4}
+                onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
+                placeholder="Enter project scope or reference details... (used to generate the category code)"
+                rows={3}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 transition focus:ring-2 focus:ring-sirkito-blue/30 focus:border-sirkito-blue/60 resize-y disabled:bg-slate-50"
+                disabled={isSubmitting}
               />
-            </div>
-
-            <div>
-              <div className="text-xs font-semibold text-slate-500 mb-3">
-                SECTION 4: FINANCIAL
+              <div className="text-[11px] text-slate-400">
+                💡 The first letters of each keyword (e.g. "Mechanical Plumbing" → <span className="font-mono font-semibold text-sirkito-blue">MP</span>) become the category code in the generated ID.
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FloatingSelectField
-                  label="VAT"
-                  value={values.vat}
-                  onChange={(next) =>
-                    setValues((v) => ({ ...v, vat: next as VatType }))
-                  }
-                  options={[
-                    { value: "VAT Ex.", label: "VAT Ex." },
-                    { value: "VAT Inc.", label: "VAT Inc." },
-                  ]}
-                />
+            </FormField>
+          </section>
 
-                <FloatingSelectField
-                  label="Status"
-                  value={values.status}
-                  onChange={(next) =>
-                    setValues((v) => ({
-                      ...v,
-                      status: next as CreateValues["status"],
-                    }))
-                  }
-                  options={[
-                    { value: "Bidding", label: "Bidding" },
-                    { value: "Awarded", label: "Awarded" },
-                  ]}
-                />
-
-                <div>
-                  <FloatingTextField
-                    label="Estimated Amount"
-                    value={estimatedAmountInput}
-                    onChange={setEstimatedAmountInput}
-                    inputMode="decimal"
-                    placeholder="e.g. 12500"
-                  />
-                  <div className="mt-2 text-xs text-slate-500">
-                    Preview:{" "}
-                    <span className="font-mono">
-                      {formatMoney(
-                        Number(estimatedAmountInput.replace(/,/g, "")) || 0,
-                      )}
-                    </span>
+          {/* Section 3: Financial */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-px flex-1 bg-slate-100" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Financial & Status</span>
+              <div className="h-px flex-1 bg-slate-100" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField id="create-vat" label="VAT Type">
+                <div className="relative">
+                  <select
+                    id="create-vat"
+                    value={values.vat}
+                    onChange={(e) => setValues((v) => ({ ...v, vat: e.target.value as VatType }))}
+                    className={selectCls}
+                    disabled={isSubmitting}
+                  >
+                    <option value="VAT Ex.">VAT Exclusive</option>
+                    <option value="VAT Inc.">VAT Inclusive</option>
+                  </select>
+                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
                   </div>
                 </div>
+              </FormField>
 
-                <div>
-                  <FloatingTextField
-                    label="Submitted Amount"
-                    value={submittedAmountInput}
-                    onChange={setSubmittedAmountInput}
-                    inputMode="decimal"
-                    placeholder="e.g. 11950"
-                  />
-                  <div className="mt-2 text-xs text-slate-500">
-                    Preview:{" "}
-                    <span className="font-mono">
-                      {formatMoney(
-                        Number(submittedAmountInput.replace(/,/g, "")) || 0,
-                      )}
-                    </span>
+              <FormField id="create-status" label="Status">
+                <div className="relative">
+                  <select
+                    id="create-status"
+                    value={values.status}
+                    onChange={(e) => setValues((v) => ({ ...v, status: e.target.value as CreateValues["status"] }))}
+                    className={selectCls}
+                    disabled={isSubmitting}
+                  >
+                    <option value="Bidding">Bidding</option>
+                    <option value="Awarded">Awarded</option>
+                  </select>
+                  <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
                   </div>
                 </div>
+              </FormField>
 
-                <FloatingTextField
-                  label="Date Started"
+              <FormField id="create-estimated" label="Estimated Amount">
+                <input
+                  id="create-estimated"
+                  type="text"
+                  inputMode="decimal"
+                  value={estimatedAmountInput}
+                  onChange={(e) => setEstimatedAmountInput(e.target.value)}
+                  placeholder="0"
+                  className={inputCls}
+                  disabled={isSubmitting}
+                />
+                <div className="text-xs text-slate-400 font-mono">
+                  = {formatMoney(Number(estimatedAmountInput.replace(/,/g, "")) || 0)}
+                </div>
+              </FormField>
+
+              <FormField id="create-submitted" label="Submitted Amount">
+                <input
+                  id="create-submitted"
+                  type="text"
+                  inputMode="decimal"
+                  value={submittedAmountInput}
+                  onChange={(e) => setSubmittedAmountInput(e.target.value)}
+                  placeholder="0"
+                  className={inputCls}
+                  disabled={isSubmitting}
+                />
+                <div className="text-xs text-slate-400 font-mono">
+                  = {formatMoney(Number(submittedAmountInput.replace(/,/g, "")) || 0)}
+                </div>
+              </FormField>
+
+              <FormField id="create-date-started" label="Date Started">
+                <input
+                  id="create-date-started"
                   type="date"
                   value={values.dateStarted ?? ""}
-                  onChange={(next) =>
-                    setValues((v) => ({
-                      ...v,
-                      dateStarted: next || null,
-                    }))
-                  }
+                  onChange={(e) => setValues((v) => ({ ...v, dateStarted: e.target.value || null }))}
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
+              </FormField>
 
-                <FloatingTextField
-                  label="Date Ended"
+              <FormField id="create-date-ended" label="Date Ended">
+                <input
+                  id="create-date-ended"
                   type="date"
                   value={values.dateEnded ?? ""}
-                  onChange={(next) =>
-                    setValues((v) => ({
-                      ...v,
-                      dateEnded: next || null,
-                    }))
-                  }
+                  onChange={(e) => setValues((v) => ({ ...v, dateEnded: e.target.value || null }))}
+                  className={inputCls}
+                  disabled={isSubmitting}
                 />
+              </FormField>
 
-                <div className="sm:col-span-2">
-                  <FloatingTextField
-                    label="Final Amount (after discount)"
-                    value={finalAmountAfterDiscountInput}
-                    onChange={setFinalAmountAfterDiscountInput}
+              <div className="sm:col-span-2">
+                <FormField id="create-final" label="Final Amount (after discount)">
+                  <input
+                    id="create-final"
+                    type="text"
                     inputMode="decimal"
-                    placeholder="e.g. 12500"
+                    value={finalAmountAfterDiscountInput}
+                    onChange={(e) => setFinalAmountAfterDiscountInput(e.target.value)}
+                    placeholder="0"
+                    className={inputCls}
+                    disabled={isSubmitting}
                   />
-                  <div className="mt-2 text-xs text-slate-500">
-                    Preview:{" "}
-                    <span className="font-mono">
-                      {formatMoney(
-                        Number(finalAmountAfterDiscountInput.replace(/,/g, "")) ||
-                          0,
-                      )}
-                    </span>
+                  <div className="text-xs text-slate-400 font-mono">
+                    = {formatMoney(Number(finalAmountAfterDiscountInput.replace(/,/g, "")) || 0)}
                   </div>
-                </div>
+                </FormField>
               </div>
             </div>
-          </div>
+          </section>
         </div>
 
-        <div className="px-7 py-4 border-t border-slate-200 bg-white flex-shrink-0">
+        {/* ── Footer ─────────────────────────────────────────────────── */}
+        <div className="px-7 py-4 border-t border-slate-100 bg-slate-50 flex-shrink-0">
           <div className="flex items-center justify-end gap-3">
             <SirkitoButton variant="secondary" onClick={onClose} type="button" disabled={isSubmitting}>
               Cancel
             </SirkitoButton>
-            <SirkitoButton
-              onClick={validateAndSubmit}
-              type="button"
-              disabled={isSubmitDisabled || isSubmitting}
-            >
-              {isSubmitting ? "Saving to Sirkito DB..." : "Create Opportunity"}
+            <SirkitoButton onClick={validateAndSubmit} type="button" disabled={isSubmitDisabled || isSubmitting}>
+              {isSubmitting ? "Saving to Sirkito DB…" : "Create Opportunity"}
             </SirkitoButton>
           </div>
         </div>
@@ -570,4 +476,3 @@ export function OpportunityCreateModal({
     </div>
   );
 }
-

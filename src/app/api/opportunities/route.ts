@@ -6,7 +6,6 @@ import {
   parseBaseCode,
 } from "@/lib/opportunityIdSequence";
 import type { Opportunity, OpportunitySnapshot } from "@/lib/opportunityTypes";
-import { syncZohoDealCreate } from "@/lib/zohoCrmDeals";
 
 /** Fallback when `parseBaseCode` fails on legacy rows; new inserts use `yearPrefix()` (Q26/Q27…) and `categoryCodeFromDescription()` (e.g. MP). */
 const PREFIX = "Q26";
@@ -115,6 +114,146 @@ async function fetchLatestBaseCodeByCreatedAt(
     return { latestBaseCode: null, error: { message: error.message } };
   }
   return { latestBaseCode: data?.base_code ?? null, error: null };
+}
+
+/** Reads Zoho OAuth env vars; throws if any required value is missing (build-safe + runtime). */
+type ZohoOAuthEnv = {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  accountsUrl: string;
+};
+
+function readZohoOAuthEnvOrThrow(): ZohoOAuthEnv {
+  const clientId = process.env.ZOHO_CLIENT_ID?.trim();
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET?.trim();
+  const refreshToken = process.env.ZOHO_REFRESH_TOKEN?.trim();
+  const accountsUrl =
+    process.env.ZOHO_ACCOUNTS_URL?.trim() || "https://accounts.zoho.com";
+
+  // Single guard so TypeScript narrows to `string` for all three below.
+  if (!clientId || !clientSecret || !refreshToken) {
+    const missing: string[] = [];
+    if (!clientId) missing.push("ZOHO_CLIENT_ID");
+    if (!clientSecret) missing.push("ZOHO_CLIENT_SECRET");
+    if (!refreshToken) missing.push("ZOHO_REFRESH_TOKEN");
+    throw new Error(
+      `Missing Zoho Configuration: ${missing.join(", ")}. Set these in Vercel → Environment Variables (Production) and redeploy.`,
+    );
+  }
+
+  return {
+    clientId,
+    clientSecret,
+    refreshToken,
+    accountsUrl,
+  };
+}
+
+/** Zoho refresh flow only — never use `grant_type=authorization_code` here (that is one-time code exchange). */
+const ZOHO_REFRESH_GRANT_TYPE = "refresh_token" as const;
+
+type ZohoTokenJson = {
+  access_token?: string;
+  api_domain?: string;
+  error?: string;
+  error_description?: string;
+};
+
+async function getZohoAccessToken(): Promise<{
+  accessToken: string;
+  apiDomain: string;
+}> {
+  console.log("Using Refresh Token:", !!process.env.ZOHO_REFRESH_TOKEN);
+
+  const { clientId, clientSecret, refreshToken, accountsUrl } =
+    readZohoOAuthEnvOrThrow();
+
+  const tokenUrl = `${accountsUrl}/oauth/v2/token`;
+  const body = new URLSearchParams();
+  body.set("grant_type", ZOHO_REFRESH_GRANT_TYPE);
+  body.set("refresh_token", refreshToken);
+  body.set("client_id", clientId);
+  body.set("client_secret", clientSecret);
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const raw = await response.text();
+  let json: ZohoTokenJson;
+  try {
+    json = JSON.parse(raw) as ZohoTokenJson;
+  } catch {
+    throw new Error(
+      `Zoho token endpoint returned non-JSON (status ${response.status}).`,
+    );
+  }
+
+  if (response.ok && json.access_token) {
+    const fromToken = json.api_domain?.trim();
+    const apiDomain =
+      fromToken ||
+      process.env.ZOHO_API_DOMAIN?.trim() ||
+      "https://www.zohoapis.com";
+    return { accessToken: json.access_token, apiDomain };
+  }
+
+  const err = json.error ?? "Unable to retrieve Zoho access token.";
+  const detail = json.error_description?.trim();
+  const message = detail ? `${err} — ${detail}` : err;
+  console.error("Zoho token refresh failed:", {
+    status: response.status,
+    error: json.error,
+    error_description: json.error_description,
+    grant_type: ZOHO_REFRESH_GRANT_TYPE,
+  });
+  throw new Error(message);
+}
+
+async function syncZohoDeal(input: {
+  opportunityId: string;
+  projectName: string;
+  client: string;
+  location: string;
+  description: string;
+  submittedAmount: number;
+}) {
+  const { accessToken, apiDomain } = await getZohoAccessToken();
+  const amount = Number(input.submittedAmount);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+
+  const payload = {
+    data: [
+      {
+        Deal_Name: input.projectName,
+        Account_Name: input.client,
+        Description: `${input.description}\nLocation: ${input.location}`,
+        Amount: safeAmount,
+        Custom_Opportunity_ID: input.opportunityId,
+      },
+    ],
+  };
+
+  const response = await fetch(`${apiDomain}/crm/v2/Deals`, {
+    method: "POST",
+    headers: {
+      Authorization: `Zoho-oauthtoken ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Zoho Deals sync failed: ${text}`);
+  }
 }
 
 function rowToOpportunity(row: OpportunityRow): Opportunity {
@@ -343,7 +482,7 @@ export async function POST(request: Request) {
     let zohoSynced = false;
     let zohoError: string | null = null;
     try {
-      await syncZohoDealCreate({
+      await syncZohoDeal({
         opportunityId: savedOpportunityId,
         projectName: body.projectName,
         client: body.client,

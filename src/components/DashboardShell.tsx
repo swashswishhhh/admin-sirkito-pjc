@@ -5,6 +5,8 @@ import { OpportunityManagementSystem } from "./OpportunityManagementSystem";
 import { DashboardHomeView } from "./DashboardHomeView";
 import { DashboardSettingsView } from "./DashboardSettingsView";
 import { DEFAULT_ID_CONFIG, loadIdConfig, saveIdConfig, type IdConfig } from "@/lib/idConfigStorage";
+import { createSupabaseBrowserClient } from "@/lib/supabaseClients";
+import { useRouter } from "next/navigation";
 
 type NavKey = "dashboard" | "opportunities" | "settings";
 
@@ -103,7 +105,8 @@ export function DashboardShell() {
   const [activeNav, setActiveNav] = React.useState<NavKey>("opportunities");
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [idConfig, setIdConfig] = React.useState<IdConfig>(() => DEFAULT_ID_CONFIG);
-  const sidebarWidthRem = sidebarCollapsed ? 5 : 18;
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const router = useRouter();
 
   React.useEffect(() => {
     const loaded = loadIdConfig();
@@ -114,6 +117,17 @@ export function DashboardShell() {
     if (typeof window === "undefined") return;
     saveIdConfig(idConfig);
   }, [idConfig]);
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      await supabase.auth.signOut();
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -186,13 +200,43 @@ export function DashboardShell() {
               onSelect={setActiveNav}
             />
           </nav>
+
+          {/* Logout button — pushed to the bottom */}
+          <div className="mt-auto pt-4">
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              title="Logout"
+              className={[
+                "w-full rounded-xl px-4 py-3 text-left font-semibold transition-colors flex items-center gap-3",
+                sidebarCollapsed ? "justify-center" : "justify-start",
+                "bg-white/0 hover:bg-red-500/20 text-white/70 hover:text-red-200 disabled:opacity-50",
+              ].join(" ")}
+              aria-label="Logout"
+            >
+              {/* Power-off icon */}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5 flex-shrink-0"
+                aria-hidden="true"
+              >
+                <path d="M18.36 6.64A9 9 0 1 1 5.64 6.64" />
+                <line x1="12" y1="2" x2="12" y2="12" />
+              </svg>
+              <span className={sidebarCollapsed ? "hidden" : "block"}>
+                {isLoggingOut ? "Logging out…" : "Logout"}
+              </span>
+            </button>
+          </div>
         </aside>
 
-        <div
-          className="min-w-0 flex flex-col"
-          // Ensures smooth resizing when the sidebar is collapsed/expanded.
-          style={{ width: `calc(100vw - ${sidebarWidthRem}rem)` }}
-        >
+        <div className="flex-1 min-w-0 flex flex-col">
           <header className="px-8 py-6 border-b border-[#E5E7EB] bg-white flex-shrink-0">
             <div className="flex items-start justify-between gap-6">
               <div>

@@ -18,7 +18,7 @@ import {
 import { parseBaseCode } from "@/lib/opportunityIdSequence";
 import { formatMoney } from "@/lib/opportunityValidation";
 import { OpportunityCreateModal } from "./OpportunityCreateModal";
-import { OpportunityEditModal, type OpportunityEditValues } from "./OpportunityEditModal";
+import { OpportunityEditModal } from "./OpportunityEditModal";
 
 async function copyTextToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
@@ -218,34 +218,44 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ opportunityId: latest.fullId }),
       });
-      const data = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        snapshot?: ReturnType<typeof getLatestVersion>;
-        zohoSynced?: boolean;
-        zohoError?: string | null;
-      };
+      const data = (await response.json().catch(() => ({}))) as { error?: string; newOpportunityId?: string };
       if (!response.ok) {
         throw new Error(data.error ?? "Failed to revise.");
       }
 
       setConfirmOpen(false);
       setOpportunityToRevise(null);
-      await loadOpportunities();
 
-      if (data.snapshot) {
-        setEditSnapshot(data.snapshot);
-        setEditOpen(true);
-      }
+      // Refresh the list first so the new snapshot exists in state.
+      await loadOpportunitiesList();
+      await refreshNextIdPreview();
 
-      if (data.zohoSynced) {
-        showToast("Revision created and synced to Zoho.");
+      // Auto-open the edit modal on the newly created version.
+      const newFullId = data.newOpportunityId;
+      if (newFullId) {
+        // Re-fetch the updated list to find the new snapshot.
+        const listRes = await fetch("/api/opportunities", { cache: "no-store" });
+        const listData = (await listRes.json()) as { opportunities?: import("@/lib/opportunityTypes").Opportunity[] };
+        const allOpps = listData.opportunities ?? [];
+        let newSnapshot: ReturnType<typeof getLatestVersion> | null = null;
+        for (const opp of allOpps) {
+          for (const snap of opp.versions) {
+            if (snap.fullId === newFullId) {
+              newSnapshot = snap;
+              break;
+            }
+          }
+          if (newSnapshot) break;
+        }
+        if (newSnapshot) {
+          setOpps(allOpps.sort((a, b) => b.updatedAt - a.updatedAt));
+          openEditModal(newSnapshot);
+          showToast(`V${newSnapshot.version} created — edit it below.`);
+        } else {
+          showToast("Opportunity revised (new version created).");
+        }
       } else {
-        showToast(
-          data.zohoError
-            ? `Revision saved. Zoho sync failed: ${data.zohoError}`
-            : "Revision saved. Zoho sync failed or skipped.",
-          4500,
-        );
+        showToast("Opportunity revised (new version created).");
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Failed to revise opportunity.");
@@ -627,13 +637,14 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         opportunity={editSnapshot}
-        onSave={async (values: OpportunityEditValues) => {
+        onSave={async (values) => {
           if (!editSnapshot) return { ok: false, error: "No opportunity selected." };
           const response = await fetch("/api/opportunities/edit", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               opportunityId: editSnapshot.fullId,
+              // Basic details
               projectName: values.projectName,
               location: values.location,
               client: values.client,
@@ -641,36 +652,24 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
               contact: values.contact,
               description: values.description,
               vat: values.vat,
+              // Financial
               estimatedAmount: values.estimatedAmount,
               submittedAmount: values.submittedAmount,
+              finalAmountAfterDiscount: values.finalAmountAfterDiscount,
+              // Status & dates
               status: values.status,
               dateStarted: values.dateStarted,
               dateEnded: values.dateEnded,
-              finalAmountAfterDiscount: values.finalAmountAfterDiscount,
             }),
           });
 
-          const data = (await response.json().catch(() => ({}))) as {
-            error?: string;
-            ok?: boolean;
-            zohoSynced?: boolean;
-            zohoError?: string | null;
-          };
+          const data = (await response.json().catch(() => ({}))) as { error?: string; ok?: boolean };
           if (!response.ok) {
             return { ok: false, error: data.error ?? "Unable to save changes." };
           }
 
           setEditOpen(false);
-          if (data.zohoSynced) {
-            showToast("Opportunity updated and synced to Zoho.");
-          } else {
-            showToast(
-              data.zohoError
-                ? `Saved to Sirkito. Zoho sync failed: ${data.zohoError}`
-                : "Saved to Sirkito. Zoho sync failed or skipped.",
-              4500,
-            );
-          }
+          showToast("Opportunity updated.");
           void loadOpportunities();
           return { ok: true };
         }}

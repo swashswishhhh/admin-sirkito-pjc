@@ -84,7 +84,7 @@ export function DashboardSettingsView({ idConfig, onIdConfigChange }: Props) {
         : "outline";
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
       <div className="grid grid-cols-1 gap-4">
         <Card>
           <CardHeader>

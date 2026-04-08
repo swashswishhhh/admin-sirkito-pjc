@@ -181,7 +181,7 @@ export function DashboardHomeView({}: Props) {
   }, [latestSnapshots]);
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">

@@ -78,6 +78,8 @@ type OpportunityRow = {
   vat: boolean | string | null;
   submitted_amount: number | string | null;
   updated_at: string | null;
+  /** Copy-on-Write lock: true = historical version, cannot be edited. */
+  is_read_only: boolean | null;
 };
 
 function snapshotVatFromRow(v: boolean | string | null | undefined): OpportunitySnapshot["vat"] {
@@ -91,7 +93,7 @@ function snapshotVatFromRow(v: boolean | string | null | undefined): Opportunity
 }
 
 const OPPORTUNITY_COLUMNS =
-  "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,date_started,date_ended,final_amount_after_discount,contact_person,contact,description,vat,submitted_amount,updated_at" as const;
+  "id,project_name,location,client_name,opportunity_id,base_code,version,estimated_amount,status,created_at,date_started,date_ended,final_amount_after_discount,contact_person,contact,description,vat,submitted_amount,updated_at,is_read_only" as const;
 
 const DUPLICATE_INSERT_MAX_ATTEMPTS = 12;
 
@@ -295,6 +297,7 @@ function rowToOpportunity(row: OpportunityRow): Opportunity {
     dateStarted: row.date_started ?? null,
     dateEnded: row.date_ended ?? null,
     finalAmountAfterDiscount: finalAfterDiscountOrNull,
+    isReadOnly: row.is_read_only === true,
   };
 
   return {

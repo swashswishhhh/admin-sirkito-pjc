@@ -303,19 +303,21 @@ export function OpportunityCreateModal({
                 />
               </FormField>
             </div>
-            {/* Row 3: Contact (full-width) */}
+            {/* Row 3: Contact (spans full width for proper grid alignment) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField id="create-contact" label="Contact Number" required>
-                <input
-                  id="create-contact"
-                  type="tel"
-                  value={values.contact}
-                  onChange={(e) => setValues((v) => ({ ...v, contact: e.target.value }))}
-                  placeholder="Enter contact number..."
-                  className={inputCls}
-                  disabled={isSubmitting}
-                />
-              </FormField>
+              <div className="sm:col-span-2">
+                <FormField id="create-contact" label="Contact Number" required>
+                  <input
+                    id="create-contact"
+                    type="tel"
+                    value={values.contact}
+                    onChange={(e) => setValues((v) => ({ ...v, contact: e.target.value }))}
+                    placeholder="Enter contact number..."
+                    className={inputCls}
+                    disabled={isSubmitting}
+                  />
+                </FormField>
+              </div>
             </div>
           </section>
 
@@ -343,7 +345,7 @@ export function OpportunityCreateModal({
           </section>
 
           {/* Section 3: Financial */}
-          <section>
+          <section className="pt-2">
             <div className="flex items-center gap-2 mb-4">
               <div className="h-px flex-1 bg-slate-100" />
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Financial & Status</span>

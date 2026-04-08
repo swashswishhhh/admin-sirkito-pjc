@@ -49,6 +49,20 @@ export async function POST(request: Request) {
     const nowIso = new Date().toISOString();
     const nextOpportunityId = opportunityFullId(current.base_code, nextVersion);
 
+    // ── Copy-on-Write: lock the current version before creating the new one ──
+    const { error: lockError } = await supabase
+      .from("opportunities")
+      .update({ is_read_only: true, updated_at: nowIso })
+      .eq("opportunity_id", opportunityId);
+
+    if (lockError) {
+      return NextResponse.json(
+        { error: `Failed to lock current version: ${lockError.message}` },
+        { status: 500 },
+      );
+    }
+
+    // ── Insert the new editable version (starts as is_read_only = false) ──
     const insertPayload = {
       base_code: current.base_code,
       opportunity_id: nextOpportunityId,
@@ -66,6 +80,7 @@ export async function POST(request: Request) {
       date_started: current.date_started,
       date_ended: current.date_ended,
       final_amount_after_discount: current.final_amount_after_discount,
+      is_read_only: false,
       created_at: nowIso,
       updated_at: nowIso,
     };
@@ -75,6 +90,12 @@ export async function POST(request: Request) {
       .insert(insertPayload);
 
     if (insertError) {
+      // Attempt to roll back the lock if insert fails
+      await supabase
+        .from("opportunities")
+        .update({ is_read_only: false })
+        .eq("opportunity_id", opportunityId);
+
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 

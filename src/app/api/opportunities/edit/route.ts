@@ -33,6 +33,29 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Missing opportunityId" }, { status: 400 });
     }
 
+    const supabase = createSupabaseServerClient();
+
+    // ── Copy-on-Write guard: reject edits to locked historical versions ──
+    const { data: existingRow, error: fetchError } = await supabase
+      .from("opportunities")
+      .select("is_read_only")
+      .eq("opportunity_id", opportunityId)
+      .single();
+
+    if (fetchError) {
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    }
+
+    if ((existingRow as { is_read_only?: boolean })?.is_read_only === true) {
+      return NextResponse.json(
+        {
+          error:
+            "This version is read-only and cannot be edited. Use 'Revise' to create a new editable version.",
+        },
+        { status: 403 },
+      );
+    }
+
     const status: OpportunityStatus | undefined =
       body.status === "Awarded" ? "Awarded" : body.status === "Bidding" ? "Bidding" : undefined;
 
@@ -59,7 +82,6 @@ export async function PATCH(request: Request) {
     if (body.estimatedAmount !== undefined) payload.estimated_amount = body.estimatedAmount;
     if (body.submittedAmount !== undefined) payload.submitted_amount = body.submittedAmount;
 
-    const supabase = createSupabaseServerClient();
     const { error } = await supabase
       .from("opportunities")
       .update(payload)
@@ -75,3 +97,4 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

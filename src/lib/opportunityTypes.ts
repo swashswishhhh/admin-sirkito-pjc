@@ -22,6 +22,9 @@ export type OpportunitySnapshot = {
   dateStarted: string | null; // Supabase DATE (YYYY-MM-DD) or null
   dateEnded: string | null; // Supabase DATE (YYYY-MM-DD) or null
   finalAmountAfterDiscount: number | null;
+
+  /** When true, this snapshot row is locked by Copy-on-Write and cannot be edited. */
+  isReadOnly?: boolean;
 };
 
 export type Opportunity = {

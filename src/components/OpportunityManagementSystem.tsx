@@ -178,25 +178,34 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
     return ["All", ...Array.from(set).sort((a, b) => a - b).map((n) => String(n))];
   }, [opps]);
 
-  const filtered = React.useMemo(() => {
+  const flatFiltered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     const versionNum = versionFilter !== "All" ? Number(versionFilter) : null;
     const byStatus = statusFilter !== "All" ? statusFilter : null;
 
-    return opps
-      .filter((o) => {
-        const latest = getLatestVersion(o);
-        const fullId = latest.fullId.toLowerCase();
-        const project = latest.projectName.toLowerCase();
+    // Flatten all versions of all opportunities into a single array
+    const allSnaps = opps.flatMap(o => o.versions.map(v => ({ snapshot: v, opp: o })));
+
+    return allSnaps
+      .filter(({ snapshot: current }) => {
+        const fullId = current.fullId.toLowerCase();
+        const project = current.projectName.toLowerCase();
 
         if (q) {
           if (!fullId.includes(q) && !project.includes(q)) return false;
         }
-        if (byStatus && latest.status !== byStatus) return false;
-        if (versionNum !== null && latest.version !== versionNum) return false;
+        if (byStatus && current.status !== byStatus) return false;
+        if (versionNum !== null && current.version !== versionNum) return false;
         return true;
       })
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      // Sort primarily by updated history (newest opportunities first),
+      // then by version descending for the identical base IDs
+      .sort((a, b) => {
+        if (b.opp.updatedAt !== a.opp.updatedAt) {
+          return b.opp.updatedAt - a.opp.updatedAt;
+        }
+        return b.snapshot.version - a.snapshot.version;
+      });
   }, [opps, search, statusFilter, versionFilter]);
 
   function openReviseModal(opportunity: Opportunity) {
@@ -409,18 +418,17 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {filtered.length === 0 ? (
+                  {flatFiltered.length === 0 ? (
                     <tr>
                       <td colSpan={14} className="px-4 py-8 text-center text-sm text-[#4B5563]">
                         No results match your filters.
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((o, idx) => {
-                      const current = getLatestVersion(o);
+                    flatFiltered.map(({ snapshot: current, opp: o }, idx) => {
                       return (
                         <tr
-                          key={o.baseId}
+                          key={current.fullId}
                           className={[
                             idx % 2 === 0 ? "bg-white" : "bg-slate-50",
                             "transition-colors hover:bg-sky-50/70",
@@ -510,13 +518,15 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
                                 {current.status}
                               </div>
                               {/* Action buttons */}
-                              <SirkitoButton
-                                variant="secondary"
-                                onClick={() => openReviseModal(o)}
-                                className="!px-3 hover:bg-sirkito-blue/5 hover:border-sirkito-blue/40 focus:ring-sirkito-blue/30"
-                              >
-                                Revise
-                              </SirkitoButton>
+                              {!current.isReadOnly && (
+                                <SirkitoButton
+                                  variant="secondary"
+                                  onClick={() => openReviseModal(o)}
+                                  className="!px-3 hover:bg-sirkito-blue/5 hover:border-sirkito-blue/40 focus:ring-sirkito-blue/30"
+                                >
+                                  Revise
+                                </SirkitoButton>
+                              )}
                               {current.isReadOnly ? (
                                 <div
                                   className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-400 cursor-not-allowed select-none"

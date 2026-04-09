@@ -197,15 +197,7 @@ export function OpportunityEditModal({
             </div>
           ) : null}
 
-          {opportunity.isReadOnly && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-              <svg className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <div>
-                <div className="font-semibold">This version is read-only (locked historical record).</div>
-                <div className="mt-0.5 text-amber-700">Use <span className="font-semibold">Revise</span> to create an editable V{opportunity.version + 1} based on this record.</div>
-              </div>
-            </div>
-          )}
+          {/* opportunity.isReadOnly check removed as historicals are now editable */}
 
           {/* Section: Basic Details */}
           <section>
@@ -233,7 +225,7 @@ export function OpportunityEditModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <FormField id="edit-contact" label="Contact Number" required>
-                  <input id="edit-contact" type="tel" value={values.contact} onChange={(e) => setValues((x) => ({ ...x, contact: e.target.value }))} placeholder="Enter contact number..." className={inputCls} disabled={isSaving || !!opportunity.isReadOnly} />
+                  <input id="edit-contact" type="tel" value={values.contact} onChange={(e) => setValues((x) => ({ ...x, contact: e.target.value }))} placeholder="Enter contact number..." className={inputCls} disabled={isSaving} />
                 </FormField>
               </div>
             </div>
@@ -321,8 +313,8 @@ export function OpportunityEditModal({
             <SirkitoButton variant="secondary" onClick={onClose} type="button" disabled={isSaving}>
               Cancel
             </SirkitoButton>
-            <SirkitoButton onClick={handleSave} type="button" disabled={isSaving || !!opportunity.isReadOnly}>
-              {isSaving ? "Saving…" : opportunity.isReadOnly ? "Read-Only" : "Save Changes"}
+            <SirkitoButton onClick={handleSave} type="button" disabled={isSaving}>
+              {isSaving ? "Saving…" : "Save Changes"}
             </SirkitoButton>
           </div>
         </div>

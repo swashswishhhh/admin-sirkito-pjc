@@ -489,20 +489,11 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
 
                           <td className="px-4 py-5">
                             <div className="flex flex-col gap-2">
-                              {/* Version & lock indicator */}
+                              {/* Version indicator */}
                               <div className="flex items-center gap-1.5">
                                 <span className="font-mono text-sm font-semibold text-[#1A1A1A]">
                                   V{current.version}
                                 </span>
-                                {current.isReadOnly && (
-                                  <span
-                                    title="This version is read-only (historical record)"
-                                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide"
-                                  >
-                                    <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                    Locked
-                                  </span>
-                                )}
                               </div>
                               {/* Status badge */}
                               <div
@@ -527,23 +518,13 @@ function OpportunityManagementInner({ idConfig }: { idConfig: IdConfig }) {
                                   Revise
                                 </SirkitoButton>
                               )}
-                              {current.isReadOnly ? (
-                                <div
-                                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-400 cursor-not-allowed select-none"
-                                  title="Read-only: this historical version cannot be edited"
-                                >
-                                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                  Read-Only
-                                </div>
-                              ) : (
-                                <SirkitoButton
-                                  variant="secondary"
-                                  onClick={() => openEditModal(current)}
-                                  className="!px-3 hover:bg-sirkito-blue/5 hover:border-sirkito-blue/40 focus:ring-sirkito-blue/30"
-                                >
-                                  Edit
-                                </SirkitoButton>
-                              )}
+                              <SirkitoButton
+                                variant="secondary"
+                                onClick={() => openEditModal(current)}
+                                className="!px-3 hover:bg-sirkito-blue/5 hover:border-sirkito-blue/40 focus:ring-sirkito-blue/30"
+                              >
+                                Edit
+                              </SirkitoButton>
                             </div>
                           </td>
                         </tr>

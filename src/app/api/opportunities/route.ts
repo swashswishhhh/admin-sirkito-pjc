@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabaseClients";
 import { categoryCodeFromDescription, yearPrefix } from "@/lib/idGenerators";
+import { mapStatusToZohoStage } from "@/lib/zohoStageMapping";
 import {
   computeNextOpportunityPreview,
   parseBaseCode,
@@ -218,6 +219,17 @@ async function getZohoAccessToken(): Promise<{
   throw new Error(message);
 }
 
+type ZohoRecordResult = {
+  status?: string;
+  code?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+};
+
+type ZohoResponseBody = {
+  data?: ZohoRecordResult[];
+};
+
 async function syncZohoDeal(input: {
   opportunityId: string;
   projectName: string;
@@ -225,10 +237,15 @@ async function syncZohoDeal(input: {
   location: string;
   description: string;
   submittedAmount: number;
+  status: string;
+  version?: number;
 }) {
   const { accessToken, apiDomain } = await getZohoAccessToken();
   const amount = Number(input.submittedAmount);
   const safeAmount = Number.isFinite(amount) ? amount : 0;
+
+  // Map Sirkito status → Zoho CRM Stage (mandatory field)
+  const zohoStage = mapStatusToZohoStage(input.status);
 
   const payload = {
     data: [
@@ -237,10 +254,14 @@ async function syncZohoDeal(input: {
         Account_Name: input.client,
         Description: `${input.description}\nLocation: ${input.location}`,
         Amount: safeAmount,
+        Stage: zohoStage,
+        Revision: input.version ? `V${input.version}` : "V1",
         Custom_Opportunity_ID: input.opportunityId,
       },
     ],
   };
+
+  console.log("Zoho Deals payload:", JSON.stringify(payload, null, 2));
 
   const response = await fetch(`${apiDomain}/crm/v2/Deals`, {
     method: "POST",
@@ -252,10 +273,36 @@ async function syncZohoDeal(input: {
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Zoho Deals sync failed: ${text}`);
+  // Zoho returns HTTP 200 even on field-level errors — must check the body.
+  const raw = await response.text();
+  let body: ZohoResponseBody;
+  try {
+    body = JSON.parse(raw) as ZohoResponseBody;
+  } catch {
+    throw new Error(
+      `Zoho Deals sync failed: non-JSON response (HTTP ${response.status}). Body: ${raw.slice(0, 500)}`,
+    );
   }
+
+  if (!response.ok) {
+    throw new Error(
+      `Zoho Deals sync failed (HTTP ${response.status}): ${raw.slice(0, 500)}`,
+    );
+  }
+
+  // Validate record-level status inside the 200 response
+  const record = body.data?.[0];
+  if (!record || record.status !== "success") {
+    const errCode = record?.code ?? "UNKNOWN";
+    const errMessage = record?.message ?? "Zoho returned a non-success record status.";
+    const errDetails = JSON.stringify(record?.details ?? {});
+    console.error("Zoho record-level error:", { code: errCode, message: errMessage, details: record?.details });
+    throw new Error(
+      `Zoho field-level error [${errCode}]: ${errMessage} | Details: ${errDetails}`,
+    );
+  }
+
+  console.log("Zoho deal created successfully:", record);
 }
 
 function rowToOpportunity(row: OpportunityRow): Opportunity {
@@ -492,6 +539,8 @@ export async function POST(request: Request) {
         location: body.location,
         description: body.description,
         submittedAmount: submittedForDb,
+        status,
+        version: 1,
       });
       zohoSynced = true;
     } catch (error) {

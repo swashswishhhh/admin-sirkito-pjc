@@ -3,6 +3,7 @@
 import * as React from "react";
 import { SirkitoButton } from "./SirkitoButton";
 import { formatMoney, parseMoney, validateContactNumber, validateRequired } from "@/lib/opportunityValidation";
+import { isValidZohoStage, getZohoStageLabel } from "@/lib/zohoStageMapping";
 import type { VatType } from "@/lib/opportunityTypes";
 import type { IdConfig } from "@/lib/idConfigStorage";
 
@@ -176,6 +177,15 @@ export function OpportunityCreateModal({
     if (sub.error) { setError(sub.error); return; }
     const fin = parseMoney(finalAmountAfterDiscountInput, "Final Amount (after discount)");
     if (fin.error) { setError(fin.error); return; }
+
+    // ── Pre-submit guard: block if Zoho Stage mapping is missing ──
+    if (!isValidZohoStage(values.status)) {
+      setError(
+        `Status "${values.status}" has no Zoho CRM Stage mapping. Cannot sync to CRM. ` +
+        `Update the mapping in zohoStageMapping.ts or choose a valid status.`,
+      );
+      return;
+    }
 
     const result = await onSubmit({
       ...values,

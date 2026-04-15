@@ -8,6 +8,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
+import { ZohoBulkFixPanel } from "./ZohoBulkFixPanel";
 
 type Props = {
   idConfig: IdConfig;
@@ -130,6 +131,8 @@ export function DashboardSettingsView({ idConfig, onIdConfigChange }: Props) {
             </div>
           </CardContent>
         </Card>
+
+        <ZohoBulkFixPanel />
 
         <Card>
           <CardHeader>
